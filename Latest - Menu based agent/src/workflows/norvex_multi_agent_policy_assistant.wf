@@ -1,0 +1,986 @@
+{
+  "workflowCode": "NORVEX_MULTI_AGENT_POLICY_ASSISTANT",
+  "name": "Norvex Multi Agent Policy Assistant",
+  "description": "Madhura Patil - Multi Agent Policy Assistant",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "id": "start",
+          "code": "START",
+          "type": "START",
+          "metadata": {
+            "name": "Start",
+            "description": "Start of data pipeline"
+          },
+          "outcomes": {
+            "success": "1787150819788"
+          },
+          "inputs": [],
+          "diagram": {
+            "x": 5000,
+            "y": 6475
+          }
+        },
+        {
+          "id": "1787088065075",
+          "code": "CHECK_STAGE",
+          "type": "LLM",
+          "metadata": {
+            "name": "Check Stage",
+            "chatHistoryEnabled": true
+          },
+          "diagram": {
+            "x": 5656,
+            "y": 6467
+          },
+          "outcomes": {
+            "success": "1787088334854"
+          },
+          "inputs": [
+            {
+              "id": "1787088065075_systemPrompt",
+              "name": "systemPrompt",
+              "type": "string",
+              "value": "You are the input classifier and router for a Company Policy Assistant.\n\nYour ONLY responsibility is to analyze the user's current input and return the structured classification defined in the Output Specification.\n\nDo NOT answer the user's question.\nDo NOT generate policy information.\nDo NOT generate follow-up questions.\nDo NOT provide explanations.\nReturn only the required structured output.\n\nThe assistant supports five policy topics.\n\nCAREER covers Confirmation, Transfer, Relocation, Performance, Promotion, PIP, Rewards and Recognition, Certification Reimbursement, and other Career and Lifecycle policies.\n\nCONDUCT covers Code of Conduct, Disciplinary Policy, POSH, Whistleblower, Non Retaliation, and Background Verification, also known as BGV.\n\nIT covers IT policies, IT Security, Password and Data Protection, Asset Management, VPN, Device Usage, Remote Access, and Information Security.\n\nCOMP_TRAVEL covers Compensation, Rewards and Recognition, salary related policies, business travel, travel expenses, reimbursements, and allowances.\n\nONBOARDING covers employee onboarding, induction, leave and holiday policies, workplace culture, employee engagement, workplace practices, and new joiner related policies.\n\nNote that Rewards and Recognition may sound like it fits CAREER or COMP_TRAVEL. Treat any question specifically about compensation, salary, monetary rewards, or travel and expense reimbursement as COMP_TRAVEL. Treat questions about career progression, promotion criteria, or performance improvement plans as CAREER.\n\n==================================================\nGLOBAL RULE — EXACTLY ONE OUTCOME\n==================================================\n\nExactly one of the following must be true, and all the rest false: isGreeting, isMenu, isOutOfScope, isCareerSelected, isConductSelected, isITSelected, isCompTravelSelected, isOnboardingSelected, isTopicMismatch, isCareerQuestion, isConductQuestion, isITQuestion, isCompTravelQuestion, isOnboardingQuestion.\n\nresolvedQuestion must stay empty unless one of the five question flags is the true flag.\n\nmismatchTopic must stay empty unless isTopicMismatch is the true flag.\n\nactiveTopic in your output must always be set to exactly the same value that was given to you, copied without any modification, regardless of which flags you end up setting.\n\n==================================================\nRULE ZERO — activeTopic COMES FROM THE CODE NODE, NEVER RECOMPUTE OR CHANGE IT\n==================================================\n\nactiveTopic and isFreshSelection will both be provided to you directly in the user prompt below, already computed by a separate deterministic Code node step. Treat this activeTopic value as fixed, external truth. Do not derive it yourself from conversation history, do not question it, do not override it, and do not change it under any circumstance, even if it seems to contradict what you would have concluded on your own by reading the history.\n\nWhatever activeTopic value you were given, copy that exact same value into your own output's activeTopic field, unchanged, no matter which flags you set below.\n\nIf isFreshSelection is true, this means the current input IS the exact act of picking a topic for the first time this turn. In this case, immediately set the isXSelected flag matching the selectedTopic value also provided to you, keep every other flag false, keep resolvedQuestion empty, set activeTopic in your output to the given value, and stop. Do not run Steps 1 through 4 below at all in this situation.\n\nIf isFreshSelection is false, proceed through Steps 1 through 4 below as normal, treating the given activeTopic as fixed truth throughout, and still copying it unchanged into your output at the end.\n\n==================================================\nPRECEDENCE ORDER — CHECK IN THIS EXACT ORDER, STOP AT FIRST MATCH\n==================================================\n\n1. Greeting\n2. Change topic request\n3. Follow up numeric selection (only when activeTopic is not NONE and input is a bare number)\n4. Normal question classification\n\nA greeting or a change topic request always wins, even if a topic is currently active or a follow up list was just shown.\n\n==================================================\nSTEP 1 — GREETING\n==================================================\n\nIf the current input is only a greeting or small talk with no real question, such as Hi, Hello, Hey, Good morning, Good afternoon, Good evening, thanks, or ok, set isGreeting to true. Stop here.\n\n==================================================\nSTEP 2 — CHANGE TOPIC REQUEST\n==================================================\n\nIf the current input expresses any intent to leave the current topic and return to the main menu, set isMenu to true. This includes, but is not limited to, phrases such as change topic, change the topic, switch topic, different topic, another topic, go back, back to menu, main menu, show menu, show topics, reset, start over, or select another topic. Judge by intent, not by requiring an exact phrase match. Stop here.\n\n==================================================\nSTEP 3 — FOLLOW UP NUMERIC SELECTION\n==================================================\n\nThis step applies whenever activeTopic is not NONE and the current input, trimmed of extra spaces and punctuation, is exactly one of 1, 2, 3, 4, 5.\n\nIdentify the single last assistant turn in the entire conversation history, meaning the assistant message immediately before this current user input, with nothing from the assistant after it. This is the ONLY assistant turn you are allowed to look at for this step. Completely ignore every earlier assistant turn, even if an older one seems to match the input better.\n\nCRITICAL WARNING ABOUT THIS SPECIFIC FAILURE MODE: multiple recent assistant turns may contain very similar or even overlapping follow up questions, especially when the same policy sub-topic keeps coming up. You may feel a pull toward whichever list's wording seems most familiar or most recently repeated in your own reasoning. Resist this. The correct list is determined ONLY by strict message position, meaning literally the single assistant message that sits immediately before the current user input in the conversation history, with no assistant message after it and none before it being relevant. Textual similarity, topical relevance, or how many times a similar question has appeared is completely irrelevant to this decision. If you find yourself drawn to a list because its wording feels closer to a recent theme, that is the wrong reason and you must instead re-check literal message position.\n\nSearch that single last assistant turn, and only that turn, for a substring that starts with the exact text <!--FOLLOWUPJSON and ends with the exact text FOLLOWUPJSON-->. If found, extract the JSON array between those two markers and parse it. It will contain objects with fields n and question.\n\nFind the object whose n field matches the number in the current input. If found, copy its question field exactly into resolvedQuestion. Set the question flag matching activeTopic to true, since every follow up item always belongs to the same topic as activeTopic. Stop here.\n\nIf the marker is not found in that single last assistant turn, or no object's n field matches the current input's number, set isMenu to true instead. Do not go to Step 4 in this situation, and do not search any earlier turn as a fallback.\n\n==================================================\nSTEP 4 — NORMAL QUESTION CLASSIFICATION\n==================================================\n\nThis step is only reached for input that is not a bare number covered by Step 3. The current input itself is treated as a real question. Never replace it with an older question from conversation history.\n\nDetermine which single topic this question's content actually relates to, based only on the current input's own content: CAREER, CONDUCT, IT, COMP_TRAVEL, ONBOARDING, or NONE if it relates to none of the five.\n\nIf the result is NONE, set isOutOfScope to true. Stop here.\n\nOtherwise, if activeTopic is NONE, set isMenu to true. Stop here.\n\nOtherwise, if activeTopic matches the result, set the matching question flag to true, and set resolvedQuestion to the current input, copied exactly. Stop here.\n\nOtherwise, set isTopicMismatch to true and mismatchTopic to the result. Stop here.\n\n==================================================\nWORKED EXAMPLES\n==================================================\n\nExample, fresh selection handled entirely by isFreshSelection, no further steps run. Given activeTopic is COMP_TRAVEL, isFreshSelection is true, selectedTopic is COMP_TRAVEL.\nReturn: isCompTravelSelected true, all else false, resolvedQuestion empty, activeTopic COMP_TRAVEL, copied exactly as given.\n\nExample, follow up extraction from the single last reply only, ignoring similar older lists. Given activeTopic is CONDUCT, isFreshSelection is false. Last assistant turn's FOLLOWUPJSON has item 4 as What disciplinary actions can be taken. An older assistant turn several messages back also has an item 4 about confidentiality. Current input: 4.\nOnly the single last turn's marker counts.\nReturn: isConductQuestion true, resolvedQuestion: What disciplinary actions can be taken, activeTopic CONDUCT, copied exactly as given.\n\nExample, unmatched number falls back to menu. Given activeTopic is CONDUCT, isFreshSelection is false. Last assistant turn has no FOLLOWUPJSON marker. Current input: 2.\nReturn: isMenu true, all else false, resolvedQuestion empty, activeTopic CONDUCT, still copied exactly as given even though isMenu is true.\n\nExample, change topic intent. Given activeTopic is IT, isFreshSelection is false. Current input: change topic.\nReturn: isMenu true, all else false, resolvedQuestion empty, activeTopic IT, copied exactly as given.\n\nExample, greeting. Given activeTopic is NONE. Current input: Hey! I need help.\nReturn: isGreeting true, all else false, resolvedQuestion empty, activeTopic NONE, copied exactly as given.\n\nExample, normal question, matches active topic. Given activeTopic is COMP_TRAVEL, isFreshSelection is false. Current input: What is the reimbursement process for travel expenses?\nReturn: isCompTravelQuestion true, resolvedQuestion: What is the reimbursement process for travel expenses?, activeTopic COMP_TRAVEL, copied exactly as given.\n\nExample, topic mismatch. Given activeTopic is CAREER, isFreshSelection is false. Current input: What is the leave policy?\nReturn: isTopicMismatch true, mismatchTopic ONBOARDING, resolvedQuestion empty, activeTopic CAREER, copied exactly as given.\n\nExample, out of scope. Given activeTopic is NONE. Current input: What is the weather?\nReturn: isOutOfScope true, all else false, resolvedQuestion empty, activeTopic NONE, copied exactly as given."
+            },
+            {
+              "id": "1787088065075_prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "Current user input is {{$context.$system.$inputMessage}}\n\nConversation history is {{$context.$system.$chatHistory}}\n\nactiveTopic has already been determined for you as {{$context.$nodes.CODE_NODE.$output.result.activeTopic}}. Do not recompute it, do not change it, copy it exactly into your own output.\n\nisFreshSelection is {{$context.$nodes.CODE_NODE.$output.result.isFreshSelection}}. If true, selectedTopic is {{$context.$nodes.CODE_NODE.$output.result.selectedTopic}} - simply set the matching isXSelected flag as instructed in Rule Zero, set activeTopic to the given value, and stop. Do not run any other steps.\n\nIf isFreshSelection is false, work through the precedence order and steps in the system instructions, in order, stopping at the first match, using the given activeTopic value throughout and copying it unchanged into your output. Return only the structured output defined in the Output Specification."
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"isGreeting\": {\"type\": \"boolean\"},\n    \"isMenu\": {\"type\": \"boolean\"},\n    \"isOutOfScope\": {\"type\": \"boolean\"},\n    \"isCareerSelected\": {\"type\": \"boolean\"},\n    \"isConductSelected\": {\"type\": \"boolean\"},\n    \"isITSelected\": {\"type\": \"boolean\"},\n    \"isCompTravelSelected\": {\"type\": \"boolean\"},\n    \"isOnboardingSelected\": {\"type\": \"boolean\"},\n    \"isTopicMismatch\": {\"type\": \"boolean\"},\n    \"isCareerQuestion\": {\"type\": \"boolean\"},\n    \"isConductQuestion\": {\"type\": \"boolean\"},\n    \"isITQuestion\": {\"type\": \"boolean\"},\n    \"isCompTravelQuestion\": {\"type\": \"boolean\"},\n    \"isOnboardingQuestion\": {\"type\": \"boolean\"},\n    \"activeTopic\": {\"type\": \"string\", \"enum\": [\"CAREER\", \"CONDUCT\", \"IT\", \"COMP_TRAVEL\", \"ONBOARDING\", \"NONE\"]},\n    \"mismatchTopic\": {\"type\": \"string\", \"enum\": [\"CAREER\", \"CONDUCT\", \"IT\", \"COMP_TRAVEL\", \"ONBOARDING\", \"\"]},\n    \"resolvedQuestion\": {\"type\": \"string\"}\n  },\n  \"required\": [\"isGreeting\",\"isMenu\",\"isOutOfScope\",\"isCareerSelected\",\"isConductSelected\",\"isITSelected\",\"isCompTravelSelected\",\"isOnboardingSelected\",\"isTopicMismatch\",\"isCareerQuestion\",\"isConductQuestion\",\"isITQuestion\",\"isCompTravelQuestion\",\"isOnboardingQuestion\",\"activeTopic\",\"mismatchTopic\",\"resolvedQuestion\"],\n  \"additionalProperties\": false\n}"
+        },
+        {
+          "id": "1787088334854",
+          "code": "IF_GREETING",
+          "type": "CONDITION",
+          "convergenceTargetId": "end",
+          "metadata": {
+            "name": "If Greeting"
+          },
+          "diagram": {
+            "x": 6106,
+            "y": 6463
+          },
+          "outcomes": {
+            "true": "1787088395090",
+            "false": "1787088525672"
+          },
+          "inputs": [
+            {
+              "id": "1787088334854_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.CHECK_STAGE.$output.isGreeting}}"
+            }
+          ]
+        },
+        {
+          "id": "1787088395090",
+          "code": "GREETING_HANDLER",
+          "type": "LLM",
+          "metadata": {
+            "name": "Greeting Handler"
+          },
+          "diagram": {
+            "x": 6556,
+            "y": 6580
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "inputs": [
+            {
+              "id": "1787088395090_systemPrompt",
+              "name": "systemPrompt",
+              "type": "string",
+              "value": "You are a friendly and professional Company Policy Assistant.\n\nGreet the user briefly and ask them to choose one of the available policy topics.\n\nPresent EXACTLY the five topics below.\n\nIMPORTANT FORMATTING RULES:\n- Use exactly one number for each topic: 1, 2, 3, 4, and 5.\n- Do NOT use nested numbering such as 1.1, 1.1.1, 2.1, etc.\n- The description must be plain text on the same line or immediately after the topic.\n- Do NOT create additional numbered lists inside the descriptions.\n- Do NOT add, remove, rename, or reorder any topics.\n- Do not answer any policy question at this stage.\n\nAvailable policy topics:\n\n1 - Career and Lifecycle\nCovers confirmation, transfers, relocation, performance management, promotions, PIP, certification reimbursement, and other employee lifecycle policies.\n\n2 - Conduct and Compliance\nCovers Code of Conduct, Disciplinary Process, POSH, Whistleblower, Non-Retaliation, and Background Verification (BGV) policies.\n\n3 - IT and Security\nCovers IT security, password and data protection, asset management, VPN, device usage, remote access, and information security policies.\n\n4 - Compensation, Rewards & Travel\nCovers compensation, rewards and recognition, salary-related policies, business travel, travel expenses, reimbursements, allowances, and related policies.\n\n5 - Onboarding and Culture\nCovers employee onboarding, induction, leave and holiday policies, workplace culture, employee engagement, workplace practices, and new-joiner related policies.\n\nAfter displaying the five topics, ask:\n\n\"Please reply with the topic name or number to continue.\"\n\nKeep the response friendly, professional, and concise.\nRespond in the user's language.\n\nDo not answer policy questions.\nDo not invent information.\nDo not add topics.\nDo not mention workflows, agents, nodes, tools, or internal processes."
+            },
+            {
+              "id": "1787088395090_prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "User message is {{$context.$system.$inputMessage}}\n\nGreet the user and present the topic menu as instructed. Return only the final response to be shown to the user"
+            }
+          ]
+        },
+        {
+          "id": "1787088525672",
+          "code": "IF_MENU",
+          "type": "CONDITION",
+          "convergenceTargetId": "end",
+          "metadata": {
+            "name": "If Menu"
+          },
+          "diagram": {
+            "x": 6556,
+            "y": 6350
+          },
+          "outcomes": {
+            "true": "1787088585856",
+            "false": "1787088641075"
+          },
+          "inputs": [
+            {
+              "id": "1787088525672_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.CHECK_STAGE.$output.isMenu}}"
+            }
+          ]
+        },
+        {
+          "id": "1787088585856",
+          "code": "SHOW_MENU",
+          "type": "RETURN",
+          "metadata": {
+            "name": "Show Menu"
+          },
+          "diagram": {
+            "x": 7006,
+            "y": 6467
+          },
+          "outcomes": {},
+          "inputs": [
+            {
+              "id": "1787088585856_returnValue",
+              "name": "returnValue",
+              "type": "string",
+              "value": "Please choose a topic to get started:\n\n1 - Career and Lifecycle\nCovers confirmation, transfers, relocation, performance management, promotions, PIP, certification reimbursement, and other employee lifecycle policies.\n\n2 - Conduct and Compliance\nCovers Code of Conduct, Disciplinary Process, POSH, Whistleblower, Non-Retaliation, and Background Verification (BGV) policies.\n\n3 - IT and Security\nCovers IT security, password and data protection, asset management, VPN, device usage, remote access, and information security policies.\n\n4 - Compensation, Rewards & Travel\nCompensation, rewards and recognition, business travel, travel expenses, reimbursements, and allowances.\n\n5 - Onboarding and Culture\nOnboarding, induction, leave and holiday policies, workplace culture, employee engagement, and new-joiner policies.\n\nReply with the option name or number."
+            }
+          ]
+        },
+        {
+          "id": "1787088641075",
+          "code": "IF_OUT_OF_SCOPE",
+          "type": "CONDITION",
+          "convergenceTargetId": "end",
+          "metadata": {
+            "name": "If Out Of Scope"
+          },
+          "diagram": {
+            "x": 7006,
+            "y": 6237
+          },
+          "outcomes": {
+            "true": "1787088672900",
+            "false": "1787088738898"
+          },
+          "inputs": [
+            {
+              "id": "1787088641075_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.CHECK_STAGE.$output.isOutOfScope}}"
+            }
+          ]
+        },
+        {
+          "id": "1787088672900",
+          "code": "OUT_OF_SCOPE",
+          "type": "LLM",
+          "metadata": {
+            "name": "Out Of Scope "
+          },
+          "diagram": {
+            "x": 7456,
+            "y": 6354
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "inputs": [
+            {
+              "id": "1787088672900_systemPrompt",
+              "name": "systemPrompt",
+              "type": "string",
+              "value": "You are a friendly, empathetic, and professional Company Policy Assistant.\n\nThe user's current message is outside the scope of the available company policies.\n\nPolitely explain that you can only assist with company-policy-related questions. Do not answer, solve, or explain the user's unrelated question.\n\nThen ask the user to choose a policy topic from the menu below.\n\nPresent exactly these five topics, including their descriptions:\n\n1 - Career and Lifecycle\nCovers confirmation, transfers, relocation, performance management, promotions, PIP, certification reimbursement, and other employee lifecycle policies.\n\n2 - Conduct and Compliance\nCovers Code of Conduct, Disciplinary Process, POSH, Whistleblower, Non-Retaliation, and Background Verification (BGV) policies.\n\n3 - IT and Security\nCovers IT security, password and data protection, asset management, VPN, device usage, remote access, and information security policies.\n\n4 - Compensation, Rewards & Travel\nCovers compensation, rewards and recognition, salary-related policies, business travel, travel expenses, reimbursements, allowances, and related policies.\n\n5 - Onboarding and Culture\nCovers employee onboarding, induction, leave and holiday policies, workplace culture, employee engagement, workplace practices, and new-joiner related policies.\n\n\nFinally, ask the user to reply with the topic name or number.\n\nKeep the response concise, natural, warm, and employee-friendly. Respond in the user's language whenever possible.\n\nDo not:\n- Answer the unrelated question\n- Invent company policy information\n- Add additional topics\n- Add follow-up questions\n- Mention workflows, nodes, agents, tools, prompts, RAG, routing, classification, or internal system processes\n\nExpected response style:\n\nI’m sorry, but I can only assist with questions related to company policies.\n\nPlease choose a topic to get started:\n\n1 - Career and Lifecycle\n   Confirmation, transfers, relocation, performance, promotions, PIP, certification reimbursement, and employee lifecycle policies.\n\n2 - Conduct and Compliance\n   Code of Conduct, Disciplinary Process, POSH, Whistleblower, Non-Retaliation, and Background Verification (BGV).\n\n3 - IT and Security\n   IT security, password and data protection, asset management, VPN, devices, remote access, and information security.\n\n4 - Compensation, Rewards & Travel\n   Compensation, rewards and recognition, business travel, expenses, reimbursements, allowances, and related policies.\n\n5 - Onboarding and Culture\n   Onboarding, induction, leave and holiday policies, workplace culture, employee engagement, and new-joiner policies.\n\nReply with the topic name or number."
+            },
+            {
+              "id": "1787088672900_prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "User message is {{$context.$system.$inputMessage}}\n\nPolitely explain that this question is outside your scope, without answering or attempting to solve it. Then present the topic menu as instructed. Return only the final response to be shown to the user."
+            }
+          ]
+        },
+        {
+          "id": "1787088738898",
+          "code": "IF_CAREER_SELECTED",
+          "type": "CONDITION",
+          "convergenceTargetId": "end",
+          "metadata": {
+            "name": "If Career Selected"
+          },
+          "diagram": {
+            "x": 7456,
+            "y": 6124
+          },
+          "outcomes": {
+            "true": "1787088780532",
+            "false": "1787088831257"
+          },
+          "inputs": [
+            {
+              "id": "1787088738898_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.CHECK_STAGE.$output.isCareerSelected}}"
+            }
+          ]
+        },
+        {
+          "id": "1787088780532",
+          "code": "CAREER_DESCRIPTION",
+          "type": "RETURN",
+          "metadata": {
+            "name": "Career Description"
+          },
+          "diagram": {
+            "x": 7906,
+            "y": 6241
+          },
+          "outcomes": {},
+          "inputs": [
+            {
+              "id": "1787088780532_returnValue",
+              "name": "returnValue",
+              "type": "string",
+              "value": "You selected Career and Lifecycle.\n\nThis topic covers:\n\n* Onboarding — New-joiner processes and related guidelines\n* Confirmation — Employee confirmation and related policies\n* Transfers — Internal transfers and movement between roles or locations\n* Promotions — Promotion and career progression policies\n* PIP — Performance Improvement Plan policies and procedures\n* Relocation — Employee relocation and related guidelines\n\nPlease type your question to continue.\n\nYou can type “change topic” at any time to choose a different policy topic."
+            }
+          ]
+        },
+        {
+          "id": "1787088831257",
+          "code": "IF_CONDUCT_SELECTED",
+          "type": "CONDITION",
+          "convergenceTargetId": "end",
+          "metadata": {
+            "name": "If Conduct Selected"
+          },
+          "diagram": {
+            "x": 7906,
+            "y": 6011
+          },
+          "outcomes": {
+            "true": "1787088880973",
+            "false": "1787088937689"
+          },
+          "inputs": [
+            {
+              "id": "1787088831257_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.CHECK_STAGE.$output.isConductSelected}}"
+            }
+          ]
+        },
+        {
+          "id": "1787088880973",
+          "code": "CONDUCT_DESCRIPTION",
+          "type": "RETURN",
+          "metadata": {
+            "name": "Conduct Description"
+          },
+          "diagram": {
+            "x": 8356,
+            "y": 6128
+          },
+          "outcomes": {},
+          "inputs": [
+            {
+              "id": "1787088880973_returnValue",
+              "name": "returnValue",
+              "type": "string",
+              "value": "You selected Conduct and Compliance.\n\nThis topic covers:\n\n* Code of Conduct — Workplace behavior, ethics, and employee responsibilities\n* Disciplinary Process — Policy violations, investigations, and disciplinary procedures\n* POSH — Prevention of Sexual Harassment policy and complaint procedures\n* Whistleblower Policy — Reporting concerns and protection against retaliation\n* Non-Retaliation — Protection for employees who raise concerns in good faith\n* Background Verification (BGV) — Employee verification requirements and procedures\n\nPlease type your question to continue.\n\nYou can type “change topic” at any time to choose a different policy topic."
+            }
+          ]
+        },
+        {
+          "id": "1787088937689",
+          "code": "IF_IT_SELECTED",
+          "type": "CONDITION",
+          "convergenceTargetId": "end",
+          "metadata": {
+            "name": "If IT Selected"
+          },
+          "diagram": {
+            "x": 8356,
+            "y": 5898
+          },
+          "outcomes": {
+            "true": "1787089096165",
+            "false": "1787137570621"
+          },
+          "inputs": [
+            {
+              "id": "1787088937689_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.CHECK_STAGE.$output.isITSelected}}"
+            }
+          ]
+        },
+        {
+          "id": "1787089096165",
+          "code": "IT_DESCRIPTION",
+          "type": "RETURN",
+          "metadata": {
+            "name": "IT Description"
+          },
+          "diagram": {
+            "x": 8806,
+            "y": 6015
+          },
+          "outcomes": {},
+          "inputs": [
+            {
+              "id": "1787089096165_returnValue",
+              "name": "returnValue",
+              "type": "string",
+              "value": "You selected IT and Security.\n\nThis topic covers:\n\n* IT Policies — General IT usage, technology resources, and employee responsibilities\n* Password and Data Security — Password management, data protection, and information security\n* Asset Management — Company devices, IT assets, and their appropriate usage\n* VPN and Device Guidelines — VPN access, remote connectivity, and company device usage\n\nPlease type your question to continue.\n\nYou can type “change topic” at any time to choose a different policy topic."
+            }
+          ]
+        },
+        {
+          "id": "1787089201763",
+          "code": "IF_CAREER_QUESTION",
+          "type": "CONDITION",
+          "convergenceTargetId": "end",
+          "metadata": {
+            "name": "If Career Question"
+          },
+          "diagram": {
+            "x": 10408,
+            "y": 5446
+          },
+          "outcomes": {
+            "true": "1787089241813",
+            "false": "1787089419338"
+          },
+          "inputs": [
+            {
+              "id": "1787089201763_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.CHECK_STAGE.$output.isCareerQuestion}}"
+            }
+          ]
+        },
+        {
+          "id": "1787089241813",
+          "code": "CAREER_AGENT_CALL",
+          "type": "AGENT",
+          "metadata": {
+            "description": "Answers employee questions on Confirmation, Transfer, India Relocation, PIP, and Performance Appraisal & Promotion policy",
+            "name": "Career Agent Call",
+            "chatHistoryEnabled": true,
+            "agentCode": "LIFECYCLE_CAREER_AGENT"
+          },
+          "diagram": {
+            "x": 10858,
+            "y": 5563
+          },
+          "outcomes": {
+            "success": "1787089742269"
+          },
+          "inputs": [
+            {
+              "id": "1787124079859_1",
+              "name": "message",
+              "type": "string",
+              "value": "{{$context.$nodes.CHECK_STAGE.$output.resolvedQuestion}}"
+            },
+            {
+              "id": "1787124079859_2",
+              "name": "question",
+              "type": "string",
+              "value": "{{$context.$nodes.CHECK_STAGE.$output.resolvedQuestion}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"answer\": {\n      \"type\": \"string\",\n      \"description\": \"The response text to show the user\"\n    },\n    \"foundInDocuments\": {\n      \"type\": \"boolean\",\n      \"description\": \"true if the answer is grounded in the attached document tool\"\n    },\n    \"sources\": {\n      \"type\": \"array\",\n      \"description\": \"The files that ground this answer. Empty if foundInDocuments is false. Never contains the document tool's own name or code.\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"fileName\": {\n            \"type\": \"string\",\n            \"description\": \"The exact file name of the source document, such as Employee Handbook.pdf\"\n          },\n          \"section\": {\n            \"type\": \"string\",\n            \"description\": \"The exact section, heading, or clause title from within that file, only when explicitly present in the retrieved content\"\n          }\n        },\n        \"required\": [\"fileName\"]\n      }\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"description\": \"Two to four related follow up questions the employee could naturally ask next, staying strictly within Career and Lifecycle topics such as onboarding, confirmation, transfers, promotions, PIP, or relocation. Do not include questions belonging to Conduct and Compliance or IT and Security.\",\n      \"items\": {\n        \"type\": \"string\"\n      },\n      \"minItems\": 2,\n      \"maxItems\": 4\n    }\n  },\n  \"required\": [\"answer\", \"foundInDocuments\", \"sources\", \"followUpQuestions\"]\n}"
+        },
+        {
+          "id": "1787089419338",
+          "code": "IF_CONDUCT_QUESTION",
+          "type": "CONDITION",
+          "convergenceTargetId": "end",
+          "metadata": {
+            "name": "If Conduct Question"
+          },
+          "diagram": {
+            "x": 10858,
+            "y": 5333
+          },
+          "outcomes": {
+            "true": "1787089466901",
+            "false": "1787138529444"
+          },
+          "inputs": [
+            {
+              "id": "1787089419338_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.CHECK_STAGE.$output.isConductQuestion}}"
+            }
+          ]
+        },
+        {
+          "id": "1787089466901",
+          "code": "CONDUCT_AGENT_CALL",
+          "type": "AGENT",
+          "metadata": {
+            "description": "Answers employee questions on POSH, Whistleblower & Non-Retaliation, Disciplinary, and BGV policy",
+            "name": "Conduct Agent Call",
+            "chatHistoryEnabled": true,
+            "agentCode": "CONDUCT_COMPLIANCE_AGENT"
+          },
+          "diagram": {
+            "x": 11308,
+            "y": 5450
+          },
+          "outcomes": {
+            "success": "1787089568546"
+          },
+          "inputs": [
+            {
+              "id": "1787124096481_1",
+              "name": "message",
+              "type": "string",
+              "value": "{{$context.$nodes.CHECK_STAGE.$output.resolvedQuestion}}"
+            },
+            {
+              "id": "1787124096481_2",
+              "name": "question",
+              "type": "string",
+              "value": "{{$context.$nodes.CHECK_STAGE.$output.resolvedQuestion}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"answer\": {\n      \"type\": \"string\",\n      \"description\": \"The response text to show the user\"\n    },\n    \"foundInDocuments\": {\n      \"type\": \"boolean\",\n      \"description\": \"true if the answer is grounded in the attached document tool\"\n    },\n    \"isActiveIncident\": {\n      \"type\": \"boolean\",\n      \"description\": \"true if the user's question described a live or ongoing incident rather than a general policy question, prompting reporting steps guidance instead of a standard answer\"\n    },\n    \"sources\": {\n      \"type\": \"array\",\n      \"description\": \"The files that ground this answer. Empty if foundInDocuments is false. Never contains the document tool's own name or code.\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"fileName\": {\n            \"type\": \"string\",\n            \"description\": \"The exact file name of the source document, such as POSH Policy.pdf\"\n          },\n          \"section\": {\n            \"type\": \"string\",\n            \"description\": \"The exact section, heading, or clause title from within that file, only when explicitly present in the retrieved content\"\n          }\n        },\n        \"required\": [\"fileName\"]\n      }\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"description\": \"Two to four related follow up questions the employee could naturally ask next, staying strictly within Conduct and Compliance topics such as code of conduct, disciplinary process, POSH, whistleblower, or background verification. Do not include questions belonging to Career and Lifecycle or IT and Security. Leave this empty if isActiveIncident is true.\",\n      \"items\": {\n        \"type\": \"string\"\n      },\n      \"minItems\": 0,\n      \"maxItems\": 4\n    }\n  },\n  \"required\": [\"answer\", \"foundInDocuments\", \"isActiveIncident\", \"sources\", \"followUpQuestions\"]\n}"
+        },
+        {
+          "id": "1787089568546",
+          "code": "CONDUCT_FORMATTER",
+          "type": "LLM",
+          "metadata": {
+            "name": "Conduct Formatter",
+            "chatHistoryEnabled": false
+          },
+          "diagram": {
+            "x": 11758,
+            "y": 5561
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "inputs": [
+            {
+              "id": "1787089568546_systemPrompt",
+              "name": "systemPrompt",
+              "type": "string",
+              "value": "You are a professional Company Policy Assistant preparing the final response for the employee.\n\nDo not begin the response with a sentence that restates the company's general commitment, policy purpose, or introductory framing, such as saying the company has a strict policy to ensure a safe and respectful workplace, or similar scene setting language. Skip straight to the first substantive fact, rule, or definition.\n\nChoose the presentation format based on the nature of the content. Use a numbered list when the content describes sequential steps or a process. Use a table when the content compares multiple items across shared attributes such as different policies, options, or eligibility levels. Use bullet points when the content is a list of separate items that do not need comparison. Use a short paragraph when the content is a single direct fact or a simple explanation.\n\nDo not change the meaning of the answer. Do not add or remove information beyond what was provided.\n\nDo not mention workflows, nodes, tools, agents, or system processes."
+            },
+            {
+              "id": "1787089568546_prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "Answer is {{$context.$nodes.CONDUCT_AGENT_CALL.$output.answer}}\n\nSources is {{$context.$nodes.CONDUCT_AGENT_CALL.$output.sources}}\n\nFollow up questions is {{$context.$nodes.CONDUCT_AGENT_CALL.$output.followUpQuestions}}\n\nFollow these steps in order:\n\n1. FORMAT THE MAIN ANSWER\n\nReview the Answer above and present it in the clearest, most user-friendly format.\n\nFollow these formatting rules:\n\n- Use bullet points when the answer contains multiple independent points, items, rules, features, or explanations.\n\n- Use numbered lists when the answer contains steps, instructions, procedures, sequences, or actions that should be followed in order.\n\n- Use a table when the answer involves a comparison between two or more items, such as differences, advantages/disadvantages, or side-by-side information.\n\n- Use headings and subheadings when the answer contains multiple distinct sections or topics.\n\n- Use short paragraphs when the answer is conversational, explanatory, or does not naturally require a list or table.\n\n- If the user explicitly asks for a specific format, follow the user's requested format.\n\n- If the user asks for an example, present it in the format that makes the example easiest to understand.\n\n- If the answer contains different types of information, use the appropriate format for each part. For example, use a short paragraph for an introduction, bullets for key points, and numbered steps for a procedure.\n\n- Do not force bullets, numbering, or tables when they do not improve readability.\n\n- Keep the formatting clean, professional, concise, and easy to scan.\n\n- Preserve the meaning of the Answer.\n\n- Do not add information that is not present in the Answer.\n\n2. DISPLAY SOURCES\n\nCheck the Sources value above.\n\n- If Sources contains one or more entries, add a Sources section immediately after the main answer.\n\n- List every source provided.\n\n- Display each source using its file name.\n\n- If a section is provided for a source, include the section after the file name.\n\n- Do not invent or modify source names or sections.\n\n- If Sources is empty, do not display a Sources section.\n\nUse this format:\n\nSources:\n\n- File Name.pdf — Section: Section Name\n\n- Another File.pdf — Section: Section Name\n\nIf no section is provided:\n\nSources:\n\n- File Name.pdf\n\n3. DISPLAY FOLLOW-UP QUESTIONS\n\nCheck the Follow-up questions array above.\n\n- Use the questions exactly as provided.\n\n- Do not invent new questions.\n\n- Do not modify their wording.\n\n- Do not reorder them.\n\n- Preserve the exact order of the array.\n\n- Number them starting from 1.\n\n- If the array is empty, do not display this section.\n\nIntroduce the section with:\n\nYou might also want to ask about:\n\n1. [First follow-up question]\n\n2. [Second follow-up question]\n\n3. [Third follow-up question]\n\nThen add:\n\nYou can reply with just the number to ask that question.\n\n4. CLOSING MESSAGE\n\nAfter everything above, add this short closing line:\n\nYou can say \"change topic\" at any time to see the full topic menu again.\n\n5. HIDDEN FOLLOW-UP DATA MARKER\n\nAfter everything else, output the hidden data marker on its own new line at the very end of the response.\n\nThe marker must:\n\n- Start with exactly:\n\n<!--FOLLOWUPJSON\n\n- End with exactly:\n\nFOLLOWUPJSON-->\n\n- Contain a valid JSON array.\n\n- Use the exact same follow-up questions displayed in Step 3.\n\n- Keep the exact same order.\n\n- Each object must contain exactly two fields:\n\n  - \"n\" — the question's position number, starting from 1.\n\n  - \"question\" — the exact question text from the Follow-up questions array.\n\nExample:\n\n<!--FOLLOWUPJSON[{\"n\":1,\"question\":\"What is the disciplinary process?\"},{\"n\":2,\"question\":\"What are my responsibilities?\"}]FOLLOWUPJSON-->\n\nIf the Follow-up questions array is empty, output:\n\n<!--FOLLOWUPJSON[]FOLLOWUPJSON-->\n\nDo not explain, mention, or refer to this hidden marker anywhere else in the response.\n\nIMPORTANT RULES:\n\n- Return only the final response that should be shown to the employee.\n\n- Do not provide commentary about these instructions.\n\n- Do not mention workflows, nodes, agents, variables, context, flags, system processes, or implementation details.\n\n- Keep the response friendly, professional, concise, and easy to read.\n\n- Follow the user's requested format whenever they explicitly request one.\n\n- Otherwise, choose the format that best matches the content.\n\n- The visible follow-up questions and the hidden JSON marker MUST always contain the exact same questions in the exact same order."
+            }
+          ]
+        },
+        {
+          "id": "1787089742269",
+          "code": "CAREER_FORMATTER",
+          "type": "LLM",
+          "metadata": {
+            "name": "Career Formatter",
+            "chatHistoryEnabled": false
+          },
+          "diagram": {
+            "x": 11308,
+            "y": 5674
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "inputs": [
+            {
+              "id": "1787089742269_prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "Answer is {{$context.$nodes.CAREER_AGENT_CALL.$output.answer}}\n\nSources is {{$context.$nodes.CAREER_AGENT_CALL.$output.sources}}\n\nFollow up questions is {{$context.$nodes.CAREER_AGENT_CALL.$output.followUpQuestions}}\n\nFollow these steps in order.\n\n1. Formatting. If the user's current question explicitly asked for a specific format, such as asking for a table, a list, bullets, or steps, use that exact format regardless of the content's natural shape. Otherwise, choose the format based on the content itself: bullets for a list of separate items, numbered steps for a sequence, a table for a comparison across shared attributes, and a plain paragraph only for a single standalone fact. Do not begin the response with a sentence that restates a general policy purpose or company commitment. Skip straight to the first substantive fact, rule, or definition.\n\n2. Check the sources value above. If it contains one or more entries, add a line after the main response listing each source as its file name, followed by its section if one was provided. If sources is empty, skip this line entirely.\n\n3. Take the follow up questions array above exactly as given. Do not invent new ones, reorder them, or change their wording. Introduce them as a line saying You might also want to ask about, then list each one as a numbered item starting from 1, in the same order as the array. Tell the employee they can reply with just the number to ask that question.\n\n4. Add one short closing line letting the employee know they can say change topic at any time to see the full topic menu again.\n\n5. After everything above, on its own new line at the very end, output a hidden data marker built from the exact same follow up questions array used in step 3, so the two never disagree. The marker must start with the exact text <!--FOLLOWUPJSON and end with the exact text FOLLOWUPJSON-->, with a valid JSON array in between. Each object must have exactly two fields, n as the item's position number matching step 3, starting from 1, and question as that same item's exact text from the array. Do not explain or mention this marker anywhere else in the response.\n\nWrite out the final response now, applying all five steps. Return only the final response to be shown to the user, with no extra commentary about these steps.s a numbered item starting from 1, in the same order as the array. Tell the employee they can reply with just the number to ask that question.\n\n4. Add one short closing line letting the employee know they can say change topic at any time to see the full topic menu again.\n\n5. After everything above, on its own new line at the very end, output a hidden data marker built from the exact same follow up questions array used in step 3, so the two never disagree. The marker must start with the exact text <!--FOLLOWUPJSON and end with the exact text FOLLOWUPJSON-->, with a valid JSON array in between. Each object must have exactly two fields, n as the item's position number matching step 3, starting from 1, and question as that same item's exact text from the array. Do not explain or mention this marker anywhere else in the response.\n\nWrite out the final response now, applying all five steps. Return only the final response to be shown to the user, with no extra commentary about these steps."
+            },
+            {
+              "id": "1787089742269_systemPrompt",
+              "name": "systemPrompt",
+              "type": "string",
+              "value": "You are a professional Company Policy Assistant preparing the final response for the employee.\n\nDo not begin the response with a sentence that restates the company's general commitment, policy purpose, or introductory framing, such as saying the company has a strict policy to ensure a safe and respectful workplace, or similar scene setting language. Skip straight to the first substantive fact, rule, or definition.\n\nChoose the presentation format based on the nature of the content. Use a numbered list when the content describes sequential steps or a process. Use a table when the content compares multiple items across shared attributes such as different policies, options, or eligibility levels. Use bullet points when the content is a list of separate items that do not need comparison. Use a short paragraph when the content is a single direct fact or a simple explanation.\n\nDo not change the meaning of the answer. Do not add or remove information beyond what was provided.\n\nDo not mention workflows, nodes, tools, agents, or system processes."
+            }
+          ]
+        },
+        {
+          "id": "1787089944147",
+          "code": "IT_AGENT_CALL",
+          "type": "AGENT",
+          "metadata": {
+            "description": "Answers employee questions on IT Policies, HR Security Policy, and Remote Connectivity and Data Protection",
+            "name": "IT Agent Call",
+            "chatHistoryEnabled": true,
+            "agentCode": "IT_SECURITY_AGENT"
+          },
+          "diagram": {
+            "x": 11758,
+            "y": 5337
+          },
+          "outcomes": {
+            "success": "1787089998808"
+          },
+          "inputs": [
+            {
+              "id": "1787124126334_1",
+              "name": "message",
+              "type": "string",
+              "value": "{{$context.$nodes.CHECK_STAGE.$output.resolvedQuestion}}"
+            },
+            {
+              "id": "1787124126334_2",
+              "name": "question",
+              "type": "string",
+              "value": "{{$context.$nodes.CHECK_STAGE.$output.resolvedQuestion}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"answer\": {\n      \"type\": \"string\",\n      \"description\": \"The response text to show the user\"\n    },\n    \"foundInDocuments\": {\n      \"type\": \"boolean\",\n      \"description\": \"true if the answer is grounded in the attached document tool\"\n    },\n    \"isActiveSecurityIncident\": {\n      \"type\": \"boolean\",\n      \"description\": \"true if the user's question described a live or ongoing security incident rather than a general policy question, prompting immediate reporting guidance instead of a standard answer\"\n    },\n    \"sources\": {\n      \"type\": \"array\",\n      \"description\": \"The files that ground this answer. Empty if foundInDocuments is false. Never contains the document tool's own name or code.\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"fileName\": {\n            \"type\": \"string\",\n            \"description\": \"The exact file name of the source document, such as All IT Policies.pdf\"\n          },\n          \"section\": {\n            \"type\": \"string\",\n            \"description\": \"The exact section, heading, or clause title from within that file, only when explicitly present in the retrieved content\"\n          }\n        },\n        \"required\": [\"fileName\"]\n      }\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"description\": \"Two to four related follow up questions the employee could naturally ask next, staying strictly within IT and Security topics such as IT policies, password and data security, asset management, VPN, or devices. Do not include questions belonging to Career and Lifecycle or Conduct and Compliance. Leave this empty if isActiveSecurityIncident is true.\",\n      \"items\": {\n        \"type\": \"string\"\n      },\n      \"minItems\": 0,\n      \"maxItems\": 4\n    }\n  },\n  \"required\": [\"answer\", \"foundInDocuments\", \"isActiveSecurityIncident\", \"sources\", \"followUpQuestions\"]\n}"
+        },
+        {
+          "id": "1787089998808",
+          "code": "IT_FORMATTER",
+          "type": "LLM",
+          "metadata": {
+            "name": "IT Formatter"
+          },
+          "diagram": {
+            "x": 12247,
+            "y": 5446
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "inputs": [
+            {
+              "id": "1787089998808_systemPrompt",
+              "name": "systemPrompt",
+              "type": "string",
+              "value": "You are a professional Company Policy Assistant preparing the final response for the employee.\n\nDo not begin the response with a sentence that restates the company's general commitment, policy purpose, or introductory framing, such as saying the company has a strict policy to ensure a safe and respectful workplace, or similar scene setting language. Skip straight to the first substantive fact, rule, or definition.\n\nChoose the presentation format based on the nature of the content. Use a numbered list when the content describes sequential steps or a process. Use a table when the content compares multiple items across shared attributes such as different policies, options, or eligibility levels. Use bullet points when the content is a list of separate items that do not need comparison. Use a short paragraph when the content is a single direct fact or a simple explanation.\n\nDo not change the meaning of the answer. Do not add or remove information beyond what was provided.\n\nDo not mention workflows, nodes, tools, agents, or system processes."
+            },
+            {
+              "id": "1787089998808_prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "Answer is {{$context.$nodes.IT_AGENT_CALL.$output.answer}}\n\nSources is {{$context.$nodes.IT_AGENT_CALL.$output.sources}}\n\nFollow up questions is {{$context.$nodes.IT_AGENT_CALL.$output.followUpQuestions}}\n\nFollow these steps in order.\n\n1. Look at the answer above and decide its structure, applying the rules described in the system instructions about lists, tables, bullets, or paragraphs.\n\n2. Check the sources value above. If it contains one or more entries, add a line after the main response listing each source as its file name, followed by its section if one was provided. If sources is empty, skip this line entirely.\n\n3. Take the follow up questions array above exactly as given. Do not invent new ones, reorder them, or change their wording. Introduce them as a line saying You might also want to ask about, then list each one as a numbered item starting from 1, in the same order as the array. Tell the employee they can reply with just the number to ask that question.\n\n4. Add one short closing line letting the employee know they can say change topic at any time to see the full topic menu again.\n\n5. After everything above, on its own new line at the very end, output a hidden data marker built from the exact same follow up questions array used in step 3, so the two never disagree. The marker must start with the exact text <!--FOLLOWUPJSON and end with the exact text FOLLOWUPJSON-->, with a valid JSON array in between. Each object must have exactly two fields, n as the item's position number matching step 3, starting from 1, and question as that same item's exact text from the array. Do not explain or mention this marker anywhere else in the response.\n\nWrite out the final response now, applying all five steps. Return only the final response to be shown to the user, with no extra commentary about these steps."
+            }
+          ]
+        },
+        {
+          "id": "1787114737961",
+          "code": "IF_TOPIC_MISMATCH",
+          "type": "CONDITION",
+          "convergenceTargetId": "end",
+          "metadata": {
+            "name": "If Topic Mismatch"
+          },
+          "diagram": {
+            "x": 9892,
+            "y": 5559
+          },
+          "outcomes": {
+            "false": "1787089201763",
+            "true": "1787114805777"
+          },
+          "inputs": [
+            {
+              "id": "1787114737961_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.CHECK_STAGE.$output.isTopicMismatch}}"
+            }
+          ]
+        },
+        {
+          "id": "1787114805777",
+          "code": "TOPIC_MISMATCH_HANDLER",
+          "type": "LLM",
+          "metadata": {
+            "name": "Topic Mismatch Handler",
+            "answerInUserLanguage": true
+          },
+          "diagram": {
+            "x": 10408,
+            "y": 5676
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "inputs": [
+            {
+              "id": "1787114805777_systemPrompt",
+              "name": "systemPrompt",
+              "type": "string",
+              "value": "You are a friendly and professional Company Policy Assistant.\n\nBriefly let the user know their question does not seem to fit the topic they are currently in. Do not answer the question.\n\nThen remind them what activeTopic actually covers, using its bullet list below, matching activeTopic exactly. Use these exact bullet lists, word for word.\n\nIf activeTopic is CAREER:\n- Onboarding — New-joiner processes and related guidelines\n- Confirmation — Employee confirmation and related policies\n- Transfers — Internal transfers and movement between roles or locations\n- Promotions — Promotion and career progression policies\n- PIP — Performance Improvement Plan policies and procedures\n- Relocation — Employee relocation and related guidelines\n\nIf activeTopic is CONDUCT:\n- Code of Conduct — Workplace behavior, ethics, and employee responsibilities\n- Disciplinary Process — Policy violations, investigations, and disciplinary procedures\n- POSH — Prevention of Sexual Harassment policy and complaint procedures\n- Whistleblower Policy — Reporting concerns and protection against retaliation\n- Non-Retaliation — Protection for employees who raise concerns in good faith\n- Background Verification (BGV) — Employee verification requirements and procedures\n\nIf activeTopic is IT:\n- IT Policies — General IT usage, technology resources, and employee responsibilities\n- Password and Data Security — Password management, data protection, and information security\n- Asset Management — Company devices, IT assets, and their appropriate usage\n- VPN and Device Guidelines — VPN access, remote connectivity, and company device usage\n\nIf activeTopic is COMP_TRAVEL:\n- Rewards and Recognition — Rewards, recognition programs, and related guidelines\n- Shift Allowance — Shift allowance eligibility and payout process\n- Certification Reimbursement — Certification reimbursement eligibility and process\n- Travel Entitlements — Business travel, accommodation, and travel-related guidelines\n- Expense Reimbursement — Expense claims, reimbursement limits, and approval process\n\nIf activeTopic is ONBOARDING:\n- Onboarding and Workplace Guidelines — New-joiner processes, workplace practices, and related guidelines\n- Communication Standards and Etiquette — Professional communication standards and workplace etiquette\n- Data Privacy in Communications — Privacy, confidentiality, and appropriate handling of information in communications\n- Employee Referral — Referral eligibility, process, and participation guidelines\n- Referral Bonus — Bonus eligibility, payout terms, and applicable conditions\n- Leave Policy — Leave types, eligibility, application process, and related guidelines\n\nAfter the bullet list, add one line telling the user they can type change topic at any time if they meant to ask about something else.\n\nKeep the response brief, friendly, and natural. Respond in the user's language.\n\nDo not mention workflows, nodes, agents, tools, variables, classification, mismatchTopic, or internal processes."
+            },
+            {
+              "id": "1787114805777_prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "User message is {{$context.$system.$inputMessage}}\n\nCurrently activeTopic is\n{{$context.$nodes.CODE_NODE.$output.result.activeTopic}}\n\nDetected topic for this question is {{$context.$nodes.CHECK_STAGE.$output.mismatchTopic}}\n\nWrite the redirect message as instructed. Return only the final response to be shown to the user."
+            }
+          ]
+        },
+        {
+          "id": "1787137570621",
+          "code": "IF_COMP_REWARDS_TRAVEL_SELECTED",
+          "type": "CONDITION",
+          "convergenceTargetId": "end",
+          "metadata": {
+            "description": "",
+            "name": "If Comp Rewards Travel Selected"
+          },
+          "diagram": {
+            "x": 8806,
+            "y": 5785
+          },
+          "outcomes": {
+            "false": "1787138062763",
+            "true": "1787138149486"
+          },
+          "inputs": [
+            {
+              "id": "1787137570621_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.CHECK_STAGE.$output.isCompTravelSelected}}"
+            }
+          ]
+        },
+        {
+          "id": "1787138062763",
+          "code": "IF_ONBOARDING_CULTURE_SELECTED",
+          "type": "CONDITION",
+          "convergenceTargetId": "end",
+          "metadata": {
+            "name": "If Onboarding Culture Selected"
+          },
+          "diagram": {
+            "x": 9295,
+            "y": 5672
+          },
+          "outcomes": {
+            "true": "1787138301539",
+            "false": "1787114737961"
+          },
+          "inputs": [
+            {
+              "id": "1787138062763_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.CHECK_STAGE.$output.isOnboardingSelected}}"
+            }
+          ]
+        },
+        {
+          "id": "1787138149486",
+          "code": "COMPENSATION_REWARDS_AND_TRAVEL_DESCRIPTION",
+          "type": "RETURN",
+          "metadata": {
+            "name": "Compensation Rewards and Travel Description"
+          },
+          "diagram": {
+            "x": 9295,
+            "y": 5902
+          },
+          "outcomes": {},
+          "inputs": [
+            {
+              "id": "1787138149486_returnValue",
+              "name": "returnValue",
+              "type": "string",
+              "value": "You selected Compensation, Rewards & Travel.\n\nThis topic covers:\n\n* Rewards and Recognition — Rewards, recognition programs, and related guidelines\n* Shift Allowance — Shift allowance eligibility and payout process\n* Certification Reimbursement — Certification reimbursement eligibility and process\n* Travel Entitlements — Business travel, accommodation, and travel-related guidelines\n* Expense Reimbursement — Expense claims, reimbursement limits, and approval process\n\nPlease type your question to continue.\n\nYou can type “change topic” at any time to choose a different policy topic."
+            }
+          ]
+        },
+        {
+          "id": "1787138301539",
+          "code": "ONBOARDING_AND_CULTURE_DESCRIPTION",
+          "type": "RETURN",
+          "metadata": {
+            "name": "Onboarding and Culture Description"
+          },
+          "diagram": {
+            "x": 9892,
+            "y": 5789
+          },
+          "outcomes": {},
+          "inputs": [
+            {
+              "id": "1787138301539_returnValue",
+              "name": "returnValue",
+              "type": "string",
+              "value": "You selected Onboarding and Culture.\n\nThis topic covers:\n\n* Onboarding and Workplace Guidelines — New-joiner processes, workplace practices, and related guidelines\n* Communication Standards and Etiquette — Professional communication standards and workplace etiquette\n* Data Privacy in Communications — Privacy, confidentiality, and appropriate handling of information in communications\n* Employee Referral — Referral eligibility, process, and participation guidelines\n* Referral Bonus — Bonus eligibility, payout terms, and applicable conditions\n* Leave Policy — Leave types, eligibility, application process, and related guidelines\n\nPlease type your question to continue.\n\nYou can type “change topic” at any time to choose a different policy topic."
+            }
+          ]
+        },
+        {
+          "id": "1787138529444",
+          "code": "IS_IT_QUESTION",
+          "type": "CONDITION",
+          "convergenceTargetId": "end",
+          "metadata": {
+            "description": "",
+            "name": "Is IT Question"
+          },
+          "diagram": {
+            "x": 11308,
+            "y": 5220
+          },
+          "outcomes": {
+            "true": "1787089944147",
+            "false": "1787138564451"
+          },
+          "inputs": [
+            {
+              "id": "1787138529444_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.CHECK_STAGE.$output.isITQuestion}}"
+            }
+          ]
+        },
+        {
+          "id": "1787138564451",
+          "code": "IS_COMP_REWARDS_TRAVEL_QUESTION",
+          "type": "CONDITION",
+          "convergenceTargetId": "end",
+          "metadata": {
+            "name": "Is Comp Rewards Travel Question"
+          },
+          "diagram": {
+            "x": 11758,
+            "y": 5107
+          },
+          "outcomes": {
+            "false": "1787138701233",
+            "true": "1787138884707"
+          },
+          "inputs": [
+            {
+              "id": "1787138564451_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.CHECK_STAGE.$output.isCompTravelQuestion}}"
+            }
+          ]
+        },
+        {
+          "id": "1787138701233",
+          "code": "ONBOARDING_CULTURE_AGENT_CALL",
+          "type": "AGENT",
+          "metadata": {
+            "description": "Handles employee questions related to the Norvex India Employee Handbook, employee onboarding, Employee Referral Policy, Communication Policy, and workplace culture using the approved company policy documents.",
+            "name": "Onboarding Culture Agent Call",
+            "agentCode": "ONBOARDING_AND_CULTURE_AGENT",
+            "chatHistoryEnabled": true
+          },
+          "diagram": {
+            "x": 12247,
+            "y": 5000
+          },
+          "outcomes": {
+            "success": "1787145706370"
+          },
+          "inputs": [
+            {
+              "id": "1787138793529_1",
+              "name": "message",
+              "type": "string",
+              "value": "{{$context.$nodes.CHECK_STAGE.$output.resolvedQuestion}}"
+            },
+            {
+              "id": "1787138793529_2",
+              "name": "question",
+              "type": "string",
+              "value": "{{$context.$nodes.CHECK_STAGE.$output.resolvedQuestion}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"answer\": {\n      \"type\": \"string\",\n      \"description\": \"The response text to show the user\"\n    },\n    \"foundInDocuments\": {\n      \"type\": \"boolean\",\n      \"description\": \"true if the answer is grounded in the attached Onboarding, Employee Handbook & Culture policy documents\"\n    },\n    \"isActiveIncident\": {\n      \"type\": \"boolean\",\n      \"description\": \"true if the user's question described a live or ongoing individual workplace issue involving onboarding, employee referral, communication, or workplace culture rather than a general policy question\"\n    },\n    \"sources\": {\n      \"type\": \"array\",\n      \"description\": \"The files that ground this answer. Empty if foundInDocuments is false. Never contains the document tool's own name or code.\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"fileName\": {\n            \"type\": \"string\",\n            \"description\": \"The exact file name of the source document\"\n          },\n          \"section\": {\n            \"type\": \"string\",\n            \"description\": \"The exact section, heading, or clause title from within that file, only when explicitly present in the retrieved content\"\n          }\n        },\n        \"required\": [\"fileName\"]\n      }\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"description\": \"Two to four related follow up questions the employee could naturally ask next, staying strictly within Onboarding, Employee Handbook, Employee Referral, Communication, and Workplace Culture topics. Do not include questions belonging to Career and Lifecycle, Conduct and Compliance, IT and Security, or Compensation and Rewards. Leave this empty if isActiveIncident is true.\",\n      \"items\": {\n        \"type\": \"string\"\n      },\n      \"minItems\": 0,\n      \"maxItems\": 4\n    }\n  },\n  \"required\": [\"answer\", \"foundInDocuments\", \"isActiveIncident\", \"sources\", \"followUpQuestions\"]\n}"
+        },
+        {
+          "id": "1787138884707",
+          "code": "COMP_REWARDS_TRAVEL_AGENT_CALL",
+          "type": "AGENT",
+          "metadata": {
+            "description": "Handles employee questions related to Rewards and Recognition, Certification Reimbursement, and Travel policies. Provides policy-grounded information on eligibility, requirements, approvals, reimbursement, and travel guidelines using the approved company documents.",
+            "name": "Comp Rewards Travel Agent Call",
+            "chatHistoryEnabled": true,
+            "agentCode": "COMPENSATION_REWARDS_AND_TRAVEL_AGENT"
+          },
+          "diagram": {
+            "x": 12247,
+            "y": 5222
+          },
+          "outcomes": {
+            "success": "1787145710245"
+          },
+          "inputs": [
+            {
+              "id": "1787138913843_1",
+              "name": "message",
+              "type": "string",
+              "value": "{{$context.$nodes.CHECK_STAGE.$output.resolvedQuestion}}"
+            },
+            {
+              "id": "1787138913843_2",
+              "name": "question",
+              "type": "string",
+              "value": "{{$context.$nodes.CHECK_STAGE.$output.resolvedQuestion}}"
+            }
+          ],
+          "outputSpecification": "{\n\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n\n  \"type\": \"object\",\n\n  \"properties\": {\n\n    \"answer\": {\n\n      \"type\": \"string\",\n\n      \"description\": \"The response text to show the user\"\n\n    },\n\n    \"foundInDocuments\": {\n\n      \"type\": \"boolean\",\n\n      \"description\": \"true if the answer is grounded in the attached Compensation, Rewards & Travel policy documents\"\n\n    },\n\n    \"isActiveIncident\": {\n\n      \"type\": \"boolean\",\n\n      \"description\": \"true if the user's question described a live or ongoing individual issue involving rewards, recognition, certification reimbursement, travel, or travel expenses rather than a general policy question\"\n\n    },\n\n    \"sources\": {\n\n      \"type\": \"array\",\n\n      \"description\": \"The files that ground this answer. Empty if foundInDocuments is false. Never contains the document tool's own name or code.\",\n\n      \"items\": {\n\n        \"type\": \"object\",\n\n        \"properties\": {\n\n          \"fileName\": {\n\n            \"type\": \"string\",\n\n            \"description\": \"The exact file name of the source document\"\n\n          },\n\n          \"section\": {\n\n            \"type\": \"string\",\n\n            \"description\": \"The exact section, heading, or clause title from within that file, only when explicitly present in the retrieved content\"\n\n          }\n\n        },\n\n        \"required\": [\"fileName\"]\n\n      }\n\n    },\n\n    \"followUpQuestions\": {\n\n      \"type\": \"array\",\n\n      \"description\": \"Two to four related follow up questions the employee could naturally ask next, staying strictly within Rewards and Recognition, Certification Reimbursement, and Travel. Do not include questions belonging to other policy areas. Leave this empty if isActiveIncident is true.\",\n\n      \"items\": {\n\n        \"type\": \"string\"\n\n      },\n\n      \"minItems\": 0,\n\n      \"maxItems\": 4\n\n    }\n\n  },\n\n  \"required\": [\"answer\", \"foundInDocuments\", \"isActiveIncident\", \"sources\", \"followUpQuestions\"]\n\n}"
+        },
+        {
+          "id": "1787145706370",
+          "code": "ONBOARDING_CULTURE_FORMATTER",
+          "type": "LLM",
+          "metadata": {
+            "description": "",
+            "name": "Onboarding Culture Formatter"
+          },
+          "diagram": {
+            "x": 12727,
+            "y": 5000
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "inputs": [
+            {
+              "id": "1787145706370_systemPrompt",
+              "name": "systemPrompt",
+              "type": "string",
+              "value": "You are a professional Company Policy Assistant preparing the final response for the employee.\nDo not begin the response with a sentence that restates the company's general commitment, policy purpose, or introductory framing, such as saying the company has a strict policy to ensure a safe and respectful workplace, or similar scene setting language. Skip straight to the first substantive fact, rule, or definition.\nChoose the presentation format based on the nature of the content. Use a numbered list when the content describes sequential steps or a process. Use a table when the content compares multiple items across shared attributes such as different policies, options, or eligibility levels. Use bullet points when the content is a list of separate items that do not need comparison. Use a short paragraph when the content is a single direct fact or a simple explanation.\nDo not change the meaning of the answer. Do not add or remove information beyond what was provided.\nDo not mention workflows, nodes, tools, agents, or system processes."
+            },
+            {
+              "id": "1787145706370_prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "Answer is {{$context.$nodes.ONBOARDING_CULTURE_AGENT_CALL.$output.answer}}\nSources is {{$context.$nodes.ONBOARDING_CULTURE_AGENT_CALL.$output.sources}}\nFollow up questions is {{$context.$nodes.ONBOARDING_CULTURE_AGENT_CALL.$output.followUpQuestions}}\n\nFollow these steps in order.\n1. Formatting. If the user's current question explicitly asked for a specific format, such as asking for a table, a list, bullets, or steps, use that exact format regardless of the content's natural shape. Otherwise, choose the format based on the content itself: bullets for a list of separate items, numbered steps for a sequence, a table for a comparison across shared attributes, and a plain paragraph only for a single standalone fact. Do not begin the response with a sentence that restates a general policy purpose or company commitment. Skip straight to the first substantive fact, rule, or definition.\n2. Check the sources value above. If it contains one or more entries, add a line after the main response listing each source as its file name, followed by its section if one was provided. If sources is empty, skip this line entirely.\n3. Take the follow up questions array above exactly as given. Do not invent new ones, reorder them, or change their wording. Introduce them as a line saying You might also want to ask about, then list each one as a numbered item starting from 1, in the same order as the array. Tell the employee they can reply with just the number to ask that question.\n4. Add one short closing line letting the employee know they can say change topic at any time to see the full topic menu again.\n5. After everything above, on its own new line at the very end, output a hidden data marker built from the exact same follow up questions array used in step 3, so the two never disagree. The marker must start with the exact text <!--FOLLOWUPJSON and end with the exact text FOLLOWUPJSON-->, with a valid JSON array in between. Each object must have exactly two fields, n as the item's position number matching step 3, starting from 1, and question as that same item's exact text from the array. Do not explain or mention this marker anywhere else in the response.\n\nWrite out the final response now, applying all five steps. Return only the final response to be shown to the user, with no extra commentary about these steps."
+            }
+          ]
+        },
+        {
+          "id": "1787145710245",
+          "code": "COMP_REWARDS_TRAVEL_FORMATTER",
+          "type": "LLM",
+          "metadata": {
+            "name": "Comp Rewards Travel Formatter"
+          },
+          "diagram": {
+            "x": 12727,
+            "y": 5222
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "inputs": [
+            {
+              "id": "1787145710245_systemPrompt",
+              "name": "systemPrompt",
+              "type": "string",
+              "value": "You are a professional Company Policy Assistant preparing the final response for the employee.\nDo not begin the response with a sentence that restates the company's general commitment, policy purpose, or introductory framing, such as saying the company has a strict policy to ensure a safe and respectful workplace, or similar scene setting language. Skip straight to the first substantive fact, rule, or definition.\nChoose the presentation format based on the nature of the content. Use a numbered list when the content describes sequential steps or a process. Use a table when the content compares multiple items across shared attributes such as different policies, options, or eligibility levels. Use bullet points when the content is a list of separate items that do not need comparison. Use a short paragraph when the content is a single direct fact or a simple explanation.\nDo not change the meaning of the answer. Do not add or remove information beyond what was provided.\nDo not mention workflows, nodes, tools, agents, or system processes."
+            },
+            {
+              "id": "1787145710245_prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "Answer is {{$context.$nodes.COMP_REWARDS_TRAVEL_AGENT_CALL.$output.answer}}\nSources is {{$context.$nodes.COMP_REWARDS_TRAVEL_AGENT_CALL.$output.sources}}\nFollow up questions is {{$context.$nodes.COMP_REWARDS_TRAVEL_AGENT_CALL.$output.followUpQuestions}}\n\nFollow these steps in order.\n1. Formatting. If the user's current question explicitly asked for a specific format, such as asking for a table, a list, bullets, or steps, use that exact format regardless of the content's natural shape. Otherwise, choose the format based on the content itself: bullets for a list of separate items, numbered steps for a sequence, a table for a comparison across shared attributes, and a plain paragraph only for a single standalone fact. Do not begin the response with a sentence that restates a general policy purpose or company commitment. Skip straight to the first substantive fact, rule, or definition.\n2. Check the sources value above. If it contains one or more entries, add a line after the main response listing each source as its file name, followed by its section if one was provided. If sources is empty, skip this line entirely.\n3. Take the follow up questions array above exactly as given. Do not invent new ones, reorder them, or change their wording. Introduce them as a line saying You might also want to ask about, then list each one as a numbered item starting from 1, in the same order as the array. Tell the employee they can reply with just the number to ask that question.\n4. Add one short closing line letting the employee know they can say change topic at any time to see the full topic menu again.\n5. After everything above, on its own new line at the very end, output a hidden data marker built from the exact same follow up questions array used in step 3, so the two never disagree. The marker must start with the exact text <!--FOLLOWUPJSON and end with the exact text FOLLOWUPJSON-->, with a valid JSON array in between. Each object must have exactly two fields, n as the item's position number matching step 3, starting from 1, and question as that same item's exact text from the array. Do not explain or mention this marker anywhere else in the response.\n\nWrite out the final response now, applying all five steps. Return only the final response to be shown to the user, with no extra commentary about these steps."
+            }
+          ]
+        },
+        {
+          "id": "1787150819788",
+          "code": "CODE_NODE",
+          "type": "CODE",
+          "metadata": {
+            "name": "code node",
+            "sourceCode": "const input = ($context.$system.$inputMessage || \"\").trim();\nconst history = $context.$system.$chatHistory || \"\";\n\n// Step A - find activeTopic from history BEFORE this turn, with menu-redisplay reset\nconst selectedPattern = /You selected (Career and Lifecycle|Conduct and Compliance|IT and Security|Compensation[^\\n]*|Onboarding and Culture)/g;\nlet lastSelectedMatch = null;\nlet m;\nwhile ((m = selectedPattern.exec(history)) !== null) {\n  lastSelectedMatch = m;\n}\nconst lastSelectedIndex = lastSelectedMatch ? lastSelectedMatch.index : -1;\n\nconst menuPattern = /Please choose a topic to get started|Please choose one of the following policy topics/g;\nlet lastMenuIndex = -1;\nwhile ((m = menuPattern.exec(history)) !== null) {\n  lastMenuIndex = m.index;\n}\n\nlet activeTopicFromHistory = \"NONE\";\nif (lastSelectedIndex > lastMenuIndex) {\n  const topicText = lastSelectedMatch[1];\n  if (topicText.startsWith(\"Career\")) activeTopicFromHistory = \"CAREER\";\n  else if (topicText.startsWith(\"Conduct\")) activeTopicFromHistory = \"CONDUCT\";\n  else if (topicText.startsWith(\"IT\")) activeTopicFromHistory = \"IT\";\n  else if (topicText.startsWith(\"Compensation\")) activeTopicFromHistory = \"COMP_TRAVEL\";\n  else if (topicText.startsWith(\"Onboarding\")) activeTopicFromHistory = \"ONBOARDING\";\n}\n\n// Step B - detect a FRESH selection happening on THIS turn (only possible if no topic active yet)\nconst normalized = input.toLowerCase().replace(/[^a-z0-9 &]/g, \"\").trim();\n\nlet selectedTopic = \"\";\nif (activeTopicFromHistory === \"NONE\") {\n  const careerMatches = [\"1\", \"career\", \"career and lifecycle\", \"career & lifecycle\"];\n  const conductMatches = [\"2\", \"conduct\", \"conduct and compliance\", \"conduct & compliance\"];\n  const itMatches = [\"3\", \"it\", \"it and security\", \"it & security\"];\n  const compTravelMatches = [\"4\", \"compensation\", \"travel\", \"compensation rewards and travel\", \"compensation rewards & travel\", \"compensation, rewards & travel\"];\n  const onboardingMatches = [\"5\", \"onboarding\", \"culture\", \"onboarding and culture\", \"onboarding & culture\"];\n\n  if (careerMatches.includes(normalized)) selectedTopic = \"CAREER\";\n  else if (conductMatches.includes(normalized)) selectedTopic = \"CONDUCT\";\n  else if (itMatches.includes(normalized)) selectedTopic = \"IT\";\n  else if (compTravelMatches.includes(normalized)) selectedTopic = \"COMP_TRAVEL\";\n  else if (onboardingMatches.includes(normalized)) selectedTopic = \"ONBOARDING\";\n}\n\n// Step C - final activeTopic: reflect a fresh pick immediately, otherwise use history value\nconst activeTopic = selectedTopic || activeTopicFromHistory;\n\nreturn {\n  activeTopic: activeTopic,\n  isFreshSelection: !!selectedTopic,\n  selectedTopic: selectedTopic\n};",
+            "returnType": "object"
+          },
+          "diagram": {
+            "x": 5206,
+            "y": 6467
+          },
+          "outcomes": {
+            "success": "1787088065075"
+          },
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "end",
+          "code": "END",
+          "type": "END",
+          "metadata": {
+            "name": "End",
+            "description": "End of data pipeline"
+          },
+          "outcomes": {},
+          "inputs": []
+        }
+      ],
+      "rootNode": "start",
+      "variables": [],
+      "errorHandlers": []
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": []
+      }
+    ],
+    "deletedTriggerTypes": [],
+    "answerInUserLanguage": false,
+    "userLanguagePrompt": "",
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "defaultModelConfiguration": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+    "diagram": {
+      "orientation": "horizontal",
+      "commentNodes": []
+    }
+  },
+  "status": "PUBLISHED",
+  "version": 1,
+  "family": "HCM",
+  "product": "GLOBAL_HUMAN_RESOURCES",
+  "customFlag": false,
+  "aiAppsCompatibleFlag": false,
+  "hiddenFlag": false,
+  "seededFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "isTemplate": false,
+  "firstStarterQuestion": "Hey! I need help",
+  "secondStarterQuestion": "What topics can you help me with?",
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: {{$context.$system.$chatHistory}} generate 3 follow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}]"
+}
