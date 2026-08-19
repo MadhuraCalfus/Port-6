@@ -28,46 +28,24 @@ no answer, because employees act on it. The assistant has to be **verifiable**, 
 | | |
 |---|---|
 | **Platform** | Oracle AI Agent Studio (Fusion HCM) |
-| **Workflow** | `COMPANY_POLICY_CHAT_ASSISTANT` — `data_pipeline`, 7 nodes |
-| **Agent** | 1 published `WORKER` agent |
-| **Document tool** | 1 `DOCUMENT` tool, 16 policy PDFs |
-| **Model** | `ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI` |
-| **Trigger** | `REST` |
-| **Status** | `PUBLISHED` |
+| **Workflow** | Company Policy Chat Assistant — 7 nodes |
+| **Agent** | 1 published policy agent |
+| **Document tool** | 1 document tool, 16 policy PDFs |
+| **Status** | Published |
 
 A single reusable agent answers every policy question, with a relevance gate in front of it and a
 formatting layer behind it.
 
 | Property | Value |
 |---|---|
-| Agent code | `COMPANY_POLICY_ASSISTANT` |
-| Type | `WORKER` — performs the task itself, no sub-agents |
-| Reusable | `true` — can be invoked from any workflow |
-| Max interactions | `5` — tool-call budget per turn |
-| Input | `question` (string) |
-| Tool attached | `COMPANY_POLICY_KNOWLEDGE_BASE` |
+| Agent | Company Policy Assistant |
+| Role | Performs the task itself — no sub-agents |
+| Reusable | Yes — can be invoked from any workflow |
+| Tool attached | Company Policy Knowledge Base |
 
-The agent is constrained by a JSON Schema, so the workflow receives predictable data rather than
-free text:
-
-```jsonc
-{
-  "answer": "string",
-  "sources": [
-    {
-      "documentName": "Travel Policy",              // required on every entry
-      "section": "1.7 — Reimbursement Process",     // only when explicitly present
-      "page": "12", "heading": "...", "chapter": "...",
-      "table": "...", "clause": "...", "appendix": "...",
-      "sourceIdentifier": "..."
-    }
-  ],
-  "follow_up_options": ["...", "...", "..."]        // exactly 3
-}
-```
-
-Because `sources` is a required field with `documentName` required on every entry, **citations are
-structurally guaranteed** rather than left to the model's discretion.
+The agent returns three things for every question: the **answer**, the **source documents** that
+support it, and **three suggested follow-up questions**. Because the source list is a required part
+of that response, citations are structurally guaranteed rather than left to the model's discretion.
 
 ---
 
@@ -83,33 +61,33 @@ the full conversation history to understand context.
                           │  user message + chat history
                           ▼
               ┌───────────────────────┐
-              │      CHECK_INPUT      │  LLM
-              │  • what is the user   │  → { isRelevant,
-              │    really asking?     │      resolvedQuestion }
-              │  • is it in scope?    │
+              │      Check Input      │  LLM
+              │  • what is the user   │  → the real question,
+              │    really asking?     │    and whether it is
+              │  • is it in scope?    │    in scope
               └───────────┬───────────┘
                           ▼
               ┌───────────────────────┐
-              │       IF_CHECK        │  CONDITION
-              │   isRelevant == true? │
+              │       If Check        │  Condition
+              │      in scope?        │
               └───┬───────────────┬───┘
            true   │               │   false
                   ▼               ▼
    ┌───────────────────────┐  ┌──────────────────────────┐
-   │ COMPANY_POLICY_AGENT  │  │ IRRELEVANT_INPUT_HANDLING│  LLM
-   │        AGENT          │  │   friendly out-of-scope  │
-   │                       │  │   redirect + topic list  │
-   │  ┌─────────────────┐  │  └────────────┬─────────────┘
-   │  │ Company Policy  │  │               │
+   │  Company Policy Agent │  │  Irrelevant Input        │  LLM
+   │        Agent          │  │  Handling                │
+   │                       │  │  friendly out-of-scope   │
+   │  ┌─────────────────┐  │  │  redirect + topic list   │
+   │  │ Company Policy  │  │  └────────────┬─────────────┘
    │  │ Knowledge Base  │  │               │
    │  └─────────────────┘  │               │
    │                       │               │
    │  → answer + sources   │               │
-   │    + follow_up_options│               │
+   │    + 3 suggestions    │               │
    └───────────┬───────────┘               │
                ▼                           │
    ┌───────────────────────┐               │
-   │       LLM_AGENT       │  LLM          │
+   │       LLM Agent       │  LLM          │
    │  presentation only:   │               │
    │  • branding           │               │
    │  • answer formatting  │               │
@@ -125,104 +103,83 @@ the full conversation history to understand context.
 
 ### Step 1 — Check Input *(router)*
 
-An LLM node reads the current message and the chat history, and returns validated JSON:
+This node reads the current message and the chat history, and returns two things: the question
+that should actually be answered, and whether it falls inside the assistant's scope.
 
-```json
-{ "isRelevant": true, "resolvedQuestion": "What is the leave policy?" }
-```
+**Determining the question.** For a normal question, the message is taken verbatim. A hard rule
+forbids chat history from overriding it — this prevents the common failure where a short question
+like *"POSH policy?"* is silently rewritten into a topic from an earlier turn. History is consulted
+in exactly one case: when the message is exactly *Option 1*, *Option 2*, *Option 3*, or a bare
+`1`–`3`, the node looks back at the **most recent** reply containing *"You may also want to know:"*
+and expands the selection into the full question text. Older option lists are explicitly out of
+bounds.
 
-Both fields are required and `additionalProperties` is `false`, so the node cannot drift into
-returning prose the next node would fail to parse.
-
-**Determining the question.** For a normal question, `resolvedQuestion` is the user's input
-verbatim. A hard rule forbids chat history from overriding it — this prevents the common failure
-where a short question like *"POSH policy?"* is silently rewritten into a topic from an earlier
-turn. History is consulted in exactly one case: when the message is exactly `Option 1`/`Option 2`/
-`Option 3`/`1`/`2`/`3`, the node looks back at the **most recent** assistant reply containing
-*"You may also want to know:"* and expands the selection into the full question text. Older option
-lists are explicitly out of bounds.
-
-**Determining relevance.** `isRelevant` is `true` for company and HR policy, leave, attendance,
-benefits, travel, expenses, workplace procedures, and company rules; `false` otherwise. The node
-never answers the question — it only classifies and resolves.
+**Determining relevance.** In scope means company and HR policy, leave, attendance, benefits,
+travel, expenses, workplace procedures, and company rules. Everything else is out of scope. The
+node never answers the question — it only classifies and resolves.
 
 ### Step 2 — If Check *(scope gate)*
 
-A condition node on `{{$context.$nodes.CHECK_INPUT.$output.isRelevant}}`, routing `true` to the
-agent and `false` to the redirect. Both branches converge on `END`.
+A condition node routing in-scope questions to the agent and everything else to the redirect. Both
+branches converge at the end.
 
-Gating **before** retrieval rather than letting the agent decline afterwards costs no tool call,
-is more reliable than burying a scope judgement inside a long retrieval prompt, and guarantees an
-off-topic message never reaches the knowledge base where it could provoke an improvised answer.
+Gating **before** retrieval rather than letting the agent decline afterwards costs no document
+lookup, is more reliable than burying a scope judgement inside a long retrieval prompt, and
+guarantees an off-topic message never reaches the knowledge base where it could provoke an
+improvised answer.
 
 ### Step 3 — Agent Call
 
-Invokes `COMPANY_POLICY_ASSISTANT` with `message = resolvedQuestion`. The agent queries the
-document tool and returns its structured output.
+The agent receives the resolved question, queries the document tool, and returns the answer, its
+sources, and three suggested follow-ups.
 
-The agent prompt runs to 17 numbered sections. The load-bearing ones: the Knowledge Base is the
-only authoritative source; answer only from retrieved content; not found → fixed message with
-`sources: []`; conflicting documents → surface both and recommend confirming with HR, never
-silently pick one; never expose salaries or credentials; accuracy over completeness.
+Its instructions run to 17 numbered sections. The load-bearing ones: the Knowledge Base is the only
+authoritative source; answer only from what was retrieved; when nothing is found, say so plainly
+and cite nothing; when two documents conflict, surface both and recommend confirming with HR rather
+than silently picking one; never expose salaries or credentials; accuracy over completeness.
 
-**Section extraction** is by far the longest part of the prompt, because a wrong document name is
-obvious to a reader but a plausible-but-wrong section number is not. The rules: copy the section
-exactly as it appears in the retrieved passage, preserve numbering character-for-character, and
-**omit the field rather than guess** — never infer a section from the answer text, the document
-title, or a numbered list in the answer.
+**Section extraction** is by far the longest part of the instructions, because a wrong document
+name is obvious to a reader but a plausible-but-wrong section number is not. The rules: copy the
+section exactly as it appears in the source passage, preserve numbering character-for-character,
+and **omit it rather than guess** — never infer a section from the answer text, the document title,
+or a numbered list in the answer.
 
 ### Step 4 — Formatter
 
-A deliberately **non-reasoning** node. It receives the resolved question, answer, sources, and
-follow-up options, and does nothing but format them — explicitly forbidden from adding, removing,
-or altering any fact, source, section, or question, and from mentioning JSON, nodes, tools,
-agents, or workflows.
+A deliberately **non-reasoning** node. It receives the question, the answer, the sources, and the
+suggested follow-ups, and does nothing but format them — explicitly forbidden from adding,
+removing, or altering any fact, source, section, or question, and from mentioning any internal
+machinery.
 
-```
-**Calfus**
-**[Policy Name from documentName]**
-
-<answer — paragraph, bullets, numbered steps, or a Markdown table,
- chosen to suit the content>
-
-You may also want to know:
-
-**Option 1:** <follow-up question 1, verbatim>
-**Option 2:** <follow-up question 2, verbatim>
-**Option 3:** <follow-up question 3, verbatim>
-
-**Sources**
-* Document: <documentName>
-* Section: <section, if available>
-* Page / Heading / Chapter / Table / Clause / Appendix: <only when present>
-```
+The reply it produces carries the company name and policy title at the top, the answer formatted to
+suit its content (a paragraph, bullets, numbered steps, or a Markdown table), the three options
+under *"You may also want to know:"*, and a sources block naming each document and its section.
 
 A 20-point validation checklist runs before output — verifying the answer is unchanged, every
-source is displayed, every section stays bound to its own document, numbering is preserved
-exactly, and no section was invented or inferred.
+source is displayed, every section stays bound to its own document, numbering is preserved exactly,
+and no section was invented or inferred.
 
 ### Step 5 — Out-of-Scope Handling
 
-Handles the `false` branch. Instead of a blunt refusal, it briefly acknowledges the message,
-explains the assistant's scope, lists what it *can* help with — leave, attendance, work from home,
-travel and expenses, benefits, code of conduct, onboarding, workplace procedures — and invites a
-relevant question. It replies in the user's language and uses short bullets rather than a wall of
-text.
+Handles the other branch. Instead of a blunt refusal, it briefly acknowledges the message, explains
+the assistant's scope, lists what it *can* help with — leave, attendance, work from home, travel
+and expenses, benefits, code of conduct, onboarding, workplace procedures — and invites a relevant
+question. It replies in the user's language and uses short bullets rather than a wall of text.
 
-This node runs with `chatHistoryEnabled: false`, unlike the other two — an off-topic message
-should be answered on its own terms, with no risk of the model dragging a previous policy topic
-into a redirect that isn't about policy.
+This node runs **without** conversation history, unlike the other two — an off-topic message should
+be answered on its own terms, with no risk of the model dragging a previous policy topic into a
+redirect that isn't about policy.
 
 ### Conversational behaviour
 
 The assistant is designed as a chat, not a search box:
 
 - **Context carry-over** — *"What is the annual leave policy?"* → *"Who needs to approve it?"*
-  resolves `it` against the previous turn
+  resolves *it* against the previous turn
 - **Clarification instead of guessing** — *"What is the policy?"* → *"Which policy would you like
   to know about — for example, leave, attendance, work from home, or travel?"*
 - **Numbered follow-ups** — every grounded answer closes with three suggestions drawn only from
-  retrieved content, selectable by typing a number
+  what was retrieved, selectable by typing a number
 - **Starter questions** — *"How do I file a POSH complaint?"* and *"What is the leave policy?"*
 
 ---
@@ -235,19 +192,21 @@ The assistant is designed as a chat, not a search box:
 |---|---|---|
 | `START` | `START` | Pipeline entry point |
 | `CHECK_INPUT` | `LLM` | Resolves menu selections into full questions; classifies relevance |
-| `IF_CHECK` | `CONDITION` | Branches on `isRelevant` — agent or redirect |
+| `IF_CHECK` | `CONDITION` | Branches on the scope decision — agent or redirect |
 | `COMPANY_POLICY_AGENT` | `AGENT` | Invokes `COMPANY_POLICY_ASSISTANT`, which queries the document tool |
-| `LLM_AGENT` | `LLM` | Formats the structured output — branding, answer, options, sources |
+| `LLM_AGENT` | `LLM` | Formats the agent's result — branding, answer, options, sources |
 | `IRRELEVANT_INPUT_HANDLING` | `LLM` | Friendly out-of-scope redirect with a topic list |
 | `END` | `END` | Pipeline exit point — both branches converge here |
 
-**LLM node configuration:**
+**Conversation history per LLM node:**
 
-| Node | Output | `chatHistoryEnabled` | `answerInUserLanguage` |
-|---|---|---|---|
-| `CHECK_INPUT` | JSON Schema | `true` | `true` |
-| `LLM_AGENT` | plain text | `true` | `true` |
-| `IRRELEVANT_INPUT_HANDLING` | plain text | `false` | `true` |
+| Node | Sees prior turns | Why |
+|---|---|---|
+| `CHECK_INPUT` | Yes | Needs history to resolve option selections and pronouns |
+| `LLM_AGENT` | Yes | Keeps the reply consistent with the conversation so far |
+| `IRRELEVANT_INPUT_HANDLING` | No | An off-topic message is answered on its own terms |
+
+All three reply in the user's language.
 
 ---
 
@@ -255,17 +214,17 @@ The assistant is designed as a chat, not a search box:
 
 | Property | Value |
 |---|---|
-| Tool code | `COMPANY_POLICY_KNOWLEDGE_BASE` |
-| Type | `DOCUMENT` (retrieval-augmented generation) |
-| Collection | `Company Policies` |
+| Tool | Company Policy Knowledge Base |
+| Type | Document tool (retrieval-augmented generation) |
+| Collection | Company Policies |
 | Attachments | 16 PDFs, ~7.7 MB |
-| User input required | `false` — the agent queries it autonomously |
-| Status | `PUBLISHED` |
+| User input required | No — the agent queries it autonomously |
+| Status | Published |
 
 > Provides access to company policy documents including leave, attendance, work from home, travel
 > and expense, and employee code of conduct policies.
 
-A `DOCUMENT` tool is Oracle AI Agent Studio's built-in RAG capability. The PDFs were uploaded
+A document tool is Oracle AI Agent Studio's built-in RAG capability. The PDFs were uploaded
 directly and the platform handles parsing, chunking, embedding, and semantic retrieval — no
 external vector database, embedding pipeline, or custom code.
 

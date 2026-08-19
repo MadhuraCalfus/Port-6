@@ -30,36 +30,32 @@ no answer, because employees act on it. The assistant has to be **verifiable**, 
 | | |
 |---|---|
 | **Platform** | Oracle AI Agent Studio (Fusion HCM) |
-| **Workflow** | `data_pipeline` — 36 nodes, 7 node types |
-| **Agents** | 5 published `WORKER` agents |
-| **Document tools** | 5 `DOCUMENT` tools, 18 policy PDFs |
-| **Model** | `ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI` |
-| **Status** | `PUBLISHED` (version 2) |
+| **Workflow** | 36 nodes, 7 node types |
+| **Agents** | 5 published specialist agents |
+| **Document tools** | 5 document tools, 18 policy PDFs |
+| **Status** | Published |
 
 Five specialist agents, each bound to exactly one document tool, so an agent can only ever answer
 from its own domain's policies:
 
 | # | Agent | Document tool | Covers |
 |---|---|---|---|
-| 1 | `LIFECYCLE_CAREER_AGENT` | `DT_LIFECYCLE_CAREER` | Confirmation, transfer, relocation, PIP, appraisal & promotion |
-| 2 | `CONDUCT_COMPLIANCE_AGENT` | `DT_CONDUCT_COMPLIANCE` | POSH, whistleblower, disciplinary, BGV |
-| 3 | `IT_SECURITY_AGENT` | `DT_IT_SECURITY` | IT policies, HR security, remote connectivity & data protection |
-| 4 | `COMPENSATION_REWARDS_AND_TRAVEL_AGENT` | `DT_COMP_REWARDS` | Rewards & recognition, certification reimbursement, travel |
-| 5 | `ONBOARDING_AND_CULTURE_AGENT` | `DT_ONBOARDING_CULTURE` | Employee handbook, onboarding, referrals, communication |
+| 1 | Lifecycle & Career | DT_Lifecycle_Career | Confirmation, transfer, relocation, PIP, appraisal & promotion |
+| 2 | Conduct & Compliance | DT_Conduct_Compliance | POSH, whistleblower, disciplinary, BGV |
+| 3 | IT & Security | DT_IT_Security | IT policies, HR security, remote connectivity & data protection |
+| 4 | Compensation, Rewards & Travel | DT_Comp_Rewards | Rewards & recognition, certification reimbursement, travel |
+| 5 | Onboarding & Culture | DT_Onboarding_Culture | Employee handbook, onboarding, referrals, communication |
 
-Every agent is instructed to ground answers strictly in its attached documents, cite the exact
-file name and section, say plainly when something isn't covered, and suggest 2–4 follow-up
-questions within its own topic. All five return structured output:
+Every agent is instructed to:
 
-```jsonc
-{
-  "answer": "string",
-  "foundInDocuments": true,
-  "isActiveIncident": false,
-  "sources": [{ "fileName": "POSH Policy.pdf", "section": "Complaint Procedure" }],
-  "followUpQuestions": ["...", "...", "..."]
-}
-```
+- **Ground every answer strictly in its attached documents** — never general knowledge or guesses
+- **Say plainly when the answer is not there**, and point the employee to HR, the Ethics helpline,
+  or the IT helpdesk as appropriate for that domain
+- **Cite the exact file name it drew from**, plus the section, heading, or clause title whenever
+  the document explicitly provides one — and never cite the document tool itself as a source
+- **Never invent a section** that the source material does not contain
+- **Suggest two to four follow-up questions**, phrased as complete natural questions, staying
+  strictly inside its own topic
 
 ---
 
@@ -74,33 +70,33 @@ the full conversation history to understand context.
                     └─────┬─────┘
                           ▼
           ┌───────────────────────────────┐
-          │          CODE_NODE            │  JavaScript — no AI
-          │  • which topic is ACTIVE?     │  → activeTopic
-          │  • is this a FRESH topic pick?│    isFreshSelection
-          │  • menu-redisplay reset       │    selectedTopic
+          │          Code Node            │  deterministic — no AI
+          │  • which topic is ACTIVE?     │
+          │  • is this a FRESH topic pick?│
+          │  • menu-redisplay reset       │
           └───────────────┬───────────────┘
                           ▼
           ┌───────────────────────────────┐
-          │         CHECK_STAGE           │  LLM classifier
-          │  treats CODE_NODE output as   │  → 14 boolean flags
-          │  fixed, external truth        │    (exactly ONE true)
-          │  never answers the question   │    + resolvedQuestion
+          │         Check Stage           │  AI classifier
+          │  treats the Code Node result  │  decides what KIND of
+          │  as fixed, external truth     │  turn this is — and
+          │  never answers the question   │  extracts the question
           └───────────────┬───────────────┘
                           ▼
        ╔══════════════════════════════════════════╗
        ║     13 CONDITION NODES, IN CASCADE       ║
-       ║   each tests one flag; false → next      ║
+       ║   each tests one outcome; else → next    ║
        ╚══════════════════════════════════════════╝
              │              │                │
              ▼              ▼                ▼
       ┌────────────┐  ┌───────────┐  ┌──────────────────┐
-      │ LLM nodes  │  │  RETURN   │  │   AGENT  (×5)    │
+      │ LLM nodes  │  │  Return   │  │   Agent  (×5)    │
       │            │  │  static   │  │         ↓        │
-      │ greeting   │  │  text     │  │  FORMATTER (×5)  │
+      │ greeting   │  │  text     │  │  Formatter (×5)  │
       │ out-of-    │  │           │  │  • format answer │
       │  scope     │  │ menu +    │  │  • Sources block │
       │ topic      │  │ 5 topic   │  │  • numbered f/ups│
-      │  mismatch  │  │ descrip-  │  │  • hidden marker │
+      │  mismatch  │  │ descrip-  │  │  • change-topic  │
       │            │  │ tions     │  │                  │
       └─────┬──────┘  └─────┬─────┘  └────────┬─────────┘
             └───────────────┴─────────────────┘
@@ -112,89 +108,97 @@ the full conversation history to understand context.
 
 ### Step 1 — Code Node *(deterministic, no AI)*
 
-Before any AI reasoning, a JavaScript node scans the raw conversation history to determine two
-things with total reliability: **which topic is currently active**, and **whether this message is
-a fresh topic pick from the menu**.
+Before any AI reasoning, this node scans the raw conversation history to determine two things with
+total reliability: **which topic is currently active**, and **whether this message is a fresh topic
+pick from the menu**.
 
-It finds the last `You selected …` line and the last menu display, then applies one rule:
+It finds the last topic-selection confirmation and the last menu display in the transcript, and
+compares their positions. If the menu was shown *after* the last selection, the active topic
+resets. That single comparison is the entire "change topic" reset mechanism — no stored state,
+just relative position in the conversation.
 
-```js
-if (lastSelectedIndex > lastMenuIndex) { /* a topic is active */ }
-```
+A fresh selection is then recognised by exact matching against a fixed list of accepted inputs per
+topic — the number, the topic name, and a couple of common variants such as *"it"* or
+*"it & security"*. This only runs when no topic is already active, which is what stops a bare `3`
+from being read as a topic switch when the user meant *"follow-up question 3"*.
 
-If the menu was shown *after* the last selection, the topic resets to `NONE`. That single
-comparison is the entire "change topic" reset mechanism — no state store, just relative position
-in the transcript. A fresh selection is then matched against exact allow-lists
-(`1`, `it`, `it & security`, …), but **only when no topic is already active** — which is what
-stops a bare `3` from being read as a topic switch when the user meant "follow-up question 3".
+**Why this is deterministic and not AI:** purely AI-based classification struggled to consistently
+track which topic was active across a long, growing conversation. As history grows, a model's
+attention to *"which menu item did the user pick eleven turns ago"* degrades — and the failure is
+silent, because the wrong specialist still produces a fluent-sounding answer. Exact matching is
+100% consistent on turn 2 and on turn 40 alike.
 
-**Why code and not AI:** purely AI-based classification struggled to consistently track which
-topic was active across a long, growing conversation. As history grows, a model's attention to
-*"which menu item did the user pick eleven turns ago"* degrades — and the failure is silent,
-because the wrong specialist still produces a fluent-sounding answer. Exact text matching is 100%
-consistent on turn 2 and on turn 40 alike.
-
-The design bet: **use code for state, use AI for language.**
+The design bet: **use deterministic logic for state, use AI for language.**
 
 ### Step 2 — Check Stage *(AI classifier)*
 
-An LLM node takes the Code node's output **as fixed truth** and classifies the turn into exactly
-one of fourteen outcomes. It never answers the question — it only decides what kind of turn this
-is and extracts the question text to hand off.
+This node takes the Code Node's result **as fixed truth** and classifies the turn into exactly one
+of fourteen outcomes. It never answers the question — it only decides what kind of turn this is
+and extracts the question text to hand off.
 
-Its **Rule Zero** is explicit:
+Its central rule is explicit:
 
-> Treat this activeTopic value as fixed, external truth. Do not derive it yourself from
-> conversation history, do not question it, do not override it, and do not change it under any
-> circumstance, **even if it seems to contradict what you would have concluded on your own.**
+> Treat the active topic as fixed, external truth. Do not derive it yourself from conversation
+> history, do not question it, do not override it, and do not change it under any circumstance,
+> **even if it seems to contradict what you would have concluded on your own.**
 
 Precedence order, stopping at the first match:
 
 | # | Check | Notes |
 |---|---|---|
-| 1 | **Greeting** | `hi`, `hello`, `thanks` — always wins |
-| 2 | **Change topic** | Judged by intent: `switch topic`, `go back`, `main menu`, `reset` |
-| 3 | **Follow-up number** | Only when a topic is active and input is exactly `1`–`5` |
+| 1 | **Greeting** | *hi*, *hello*, *thanks* — always wins |
+| 2 | **Change topic** | Judged by intent: *switch topic*, *go back*, *main menu*, *reset* |
+| 3 | **Follow-up number** | Only when a topic is active and the message is exactly `1`–`5` |
 | 4 | **Normal question** | Out of scope → no topic match · matches active topic → agent · differs → mismatch |
+
+Rewards and Recognition plausibly belongs to either the Career or the Compensation topic, so the
+classifier settles it explicitly: anything about compensation, salary, monetary rewards, or travel
+and expense reimbursement goes to Compensation; anything about career progression, promotion
+criteria, or performance improvement goes to Career.
 
 ### Step 3 — Routing
 
-Thirteen condition nodes, **chained** — each one's `false` outcome points at the next test.
-Because the classifier guarantees exactly one flag is true, the cascade is a plain if-else chain;
-all the precedence logic lives in the prompt, and the graph just walks the list.
+Thirteen condition nodes, **chained** — each one's negative outcome points at the next test.
+Because the classifier guarantees exactly one outcome is true, the cascade behaves as a plain
+if-else chain; all the precedence logic lives in the classifier, and the graph just walks the list.
 
 ### Step 4 — Agent Call
 
-The matching specialist receives `resolvedQuestion`, searches its own documents, and either
-answers with citations or reports `foundInDocuments: false` and directs the employee to HR, the
-Ethics helpline, or the IT helpdesk as appropriate for that domain.
+The matching specialist receives the resolved question, searches its own documents, and either
+answers with citations or reports that the documents do not cover it and directs the employee to
+HR, the Ethics helpline, or the IT helpdesk as appropriate for that domain.
 
 **Live incident escalation.** The Conduct and IT agents detect when a message describes a real,
 ongoing incident rather than a general policy question — harassment or retaliation for Conduct,
 phishing or a lost device for IT. They skip the normal answer, provide official reporting steps
 immediately, and **suppress follow-up questions entirely**, since an active incident response
-should not invite casual browsing.
+should not invite casual browsing. Both also refuse to collect case details in the chat, redirecting
+the employee to the official reporting channel instead.
 
 ### Step 5 — Formatter
 
 One per agent branch. Takes the raw answer and prepares the final reply in five steps: format the
 answer to suit the content (numbered list for procedures, table for comparisons, bullets for
-independent facts, paragraph for a single fact), add the `Sources:` block, list the follow-up
-questions numbered from 1, add the *"change topic"* closing line, and append the hidden marker.
+independent facts, paragraph for a single fact), add the sources block, list the follow-up
+questions numbered from 1, add the *"change topic"* closing line, and carry the follow-up list
+forward for the next turn.
+
+The formatter also bans throat-clearing — no opening sentence restating the company's general
+commitment or policy purpose, straight to the first substantive fact.
 
 ### The follow-up mechanism
 
-The formatter embeds the follow-up list as a hidden marker at the very end of its reply —
-invisible when read, present in the raw text:
+Each reply ends with a marker that records the follow-up questions exactly as they were displayed.
+The marker is invisible when the message is read normally.
 
-```html
-<!--FOLLOWUPJSON[{"n":1,"question":"What is the disciplinary process?"}]FOLLOWUPJSON-->
-```
+If the next message is a bare number, the Check Stage reads that marker from **only the single most
+recent reply**, resolves the number to the full question text, and sends that to the agent — never
+the bare digit, which would retrieve nothing. If the marker is missing or no number matches, it
+falls back to showing the menu rather than guessing from an older list.
 
-If the next message is a bare number, `CHECK_STAGE` reads the marker from **only the single most
-recent assistant turn**, resolves the number to the full question text, and sends that to the
-agent — never the bare digit, which would retrieve nothing. If the marker is missing or no number
-matches, it falls back to the menu rather than guessing from an older list.
+The classifier carries a pointed warning about this: several recent replies may contain similar
+follow-up questions, and the correct list is determined **only by message position**, never by
+which wording feels most familiar.
 
 ---
 
@@ -206,8 +210,8 @@ matches, it falls back to the menu rather than guessing from an older list.
 | Node | Type | What it does |
 |---|---|---|
 | `START` | `START` | Pipeline entry point |
-| `CODE_NODE` | `CODE` | JavaScript — extracts active topic and fresh-selection state from history |
-| `CHECK_STAGE` | `LLM` | Classifies the turn into 14 flags, exactly one true; extracts `resolvedQuestion` |
+| `CODE_NODE` | `CODE` | Deterministic logic — works out the active topic and whether this is a fresh pick |
+| `CHECK_STAGE` | `LLM` | Classifies the turn into one of 14 outcomes and extracts the question to answer |
 | `IF_GREETING` | `CONDITION` | Is this a greeting? |
 | `GREETING_HANDLER` | `LLM` | Friendly welcome plus the five-topic menu |
 | `IF_MENU` | `CONDITION` | Is this a change-topic request? |
@@ -251,26 +255,26 @@ text.
 
 ## Document Tools
 
-Five `DOCUMENT`-type tools, each attached to exactly one agent. Oracle AI Agent Studio handles
+Five document tools, each attached to exactly one agent. Oracle AI Agent Studio handles
 parsing, chunking, embedding, and semantic retrieval — no external vector database or custom code.
 
-### `DT_LIFECYCLE_CAREER`
+### DT_Lifecycle_Career
 > Employee lifecycle and career policies — confirmation, transfers, relocation, performance
 > improvement plans, appraisals, promotions, and career progression.
 
-### `DT_CONDUCT_COMPLIANCE`
+### DT_Conduct_Compliance
 > Employee conduct, workplace compliance, ethics, disciplinary procedures, POSH-related matters,
 > whistleblower protection, non-retaliation, and background verification.
 
-### `DT_IT_SECURITY`
+### DT_IT_Security
 > IT, information security, HR security, remote-access, connectivity, data protection, and
 > technology usage policies.
 
-### `DT_COMP_REWARDS`
+### DT_Comp_Rewards
 > Rewards, recognition programs, certification reimbursement, business travel, travel eligibility,
 > expenses, and related reimbursement policies.
 
-### `DT_ONBOARDING_CULTURE`
+### DT_Onboarding_Culture
 > Employee onboarding, general employee guidelines, workplace culture, referral programs, internal
 > communication, and the employee handbook.
 
@@ -282,11 +286,11 @@ parsing, chunking, embedding, and semantic retrieval — no external vector data
 
 | Document Tool | Documents |
 |---|---|
-| `DT_LIFECYCLE_CAREER` | `Confirmation Policy.pdf`<br>`Transfer Policy.pdf`<br>`India Relocation Policy.pdf`<br>`PIP Process.pdf`<br>`Performance Appraisal and Promotion Policy.pdf` |
-| `DT_CONDUCT_COMPLIANCE` | `POSH Policy.pdf`<br>`Whistleblower and Non Retaliation Policy.pdf`<br>`Disciplinary Policy.pdf`<br>`BGV Policy.pdf` |
-| `DT_IT_SECURITY` | `All IT Policies.pdf`<br>`HR Security Policy.pdf`<br>`Remote Connectivity and Data Protection Policy.pdf` |
-| `DT_COMP_REWARDS` | `Rewards and Recognition Policy.pdf`<br>`Certification Reimbursement Policy.pdf`<br>`Travel Policy.pdf` |
-| `DT_ONBOARDING_CULTURE` | `Norvex India Employee Handbook.pdf`<br>`Norvex Crew  Employee Referral Policy.pdf`<br>`Communication Policy.pdf` |
+| DT_Lifecycle_Career | `Confirmation Policy.pdf`<br>`Transfer Policy.pdf`<br>`India Relocation Policy.pdf`<br>`PIP Process.pdf`<br>`Performance Appraisal and Promotion Policy.pdf` |
+| DT_Conduct_Compliance | `POSH Policy.pdf`<br>`Whistleblower and Non Retaliation Policy.pdf`<br>`Disciplinary Policy.pdf`<br>`BGV Policy.pdf` |
+| DT_IT_Security | `All IT Policies.pdf`<br>`HR Security Policy.pdf`<br>`Remote Connectivity and Data Protection Policy.pdf` |
+| DT_Comp_Rewards | `Rewards and Recognition Policy.pdf`<br>`Certification Reimbursement Policy.pdf`<br>`Travel Policy.pdf` |
+| DT_Onboarding_Culture | `Norvex India Employee Handbook.pdf`<br>`Norvex Crew  Employee Referral Policy.pdf`<br>`Communication Policy.pdf` |
 
 The one-agent-to-one-tool pairing is what makes *"answer only from your own documents"* an
 enforceable constraint rather than an aspiration — an agent physically cannot retrieve another
